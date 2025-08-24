@@ -5,8 +5,8 @@ import { indexSingleFile, reindexSingleFile, fullReindex, scheduledIncrementalIn
 
 // Define ToolSchema objects for our custom methods
 const INGEST_TOOL_SCHEMA = {
-  name: "memory.ingest",
-  description: "Stores and indexes content in the semantic memory system using vector embeddings. Supports intelligent chunking for code (AST-based for JS/TS) and content-aware segmentation for documentation. Use this to build a searchable knowledge base of code, documentation, conversations, and rules. Returns success status and number of vectors created.",
+  name: "codebase.store",
+  description: "🤖 AI ASSISTANT: Store code/docs for future semantic search. WHEN TO USE: After reading important files, discovering key implementations, or learning new patterns. Creates searchable knowledge base. 💡 TIP: Use this when you find solutions, patterns, or important code - makes future searches much more effective than re-reading files.",
   inputSchema: {
     type: "object",
     properties: {
@@ -42,8 +42,8 @@ const INGEST_TOOL_SCHEMA = {
 };
 
 const RETRIEVE_TOOL_SCHEMA = {
-  name: "memory.retrieve",
-  description: "Performs semantic search across the indexed memory to find relevant content based on natural language queries. Returns up to 5 most similar content chunks with metadata, source information, and similarity scores. Supports filtering by content type, source, language, or custom metadata to narrow search scope.",
+  name: "codebase.search",
+  description: "🔍 AI ASSISTANT: SEARCH FIRST before Read/Grep! Finds code by meaning, not just keywords. EXAMPLES: 'authentication patterns', 'error handling in APIs', 'React component lifecycle', 'database queries', 'webhook validation'. 🚀 MUCH FASTER than grep - understands context, finds similar implementations even with different names.",
   inputSchema: {
     type: "object",
     properties: {
@@ -76,8 +76,8 @@ const RETRIEVE_TOOL_SCHEMA = {
 };
 
 const DELETE_SOURCE_TOOL_SCHEMA = {
-  name: "memory.delete_source",
-  description: "Removes all indexed content chunks that originated from a specific source identifier. This is a bulk deletion operation useful for cleaning up outdated content, removing deleted files, or preparing to re-ingest updated content. All vector embeddings with the matching source will be permanently deleted from the memory system.",
+  name: "codebase.forget",
+  description: "🗑️ AI ASSISTANT: Remove outdated/deleted code from search index. WHEN TO USE: After deleting files, major refactors, or when search returns obsolete results. Keeps search results clean and current. 💡 TIP: Use before re-indexing renamed or moved files.",
   inputSchema: {
     type: "object",
     properties: {
@@ -100,8 +100,8 @@ const DELETE_SOURCE_TOOL_SCHEMA = {
 };
 
 const LIST_PROJECTS_TOOL_SCHEMA = {
-  name: "memory.list_projects",
-  description: "Lists all project identifiers that have content stored in the memory system. Returns a list of unique project_id values found in the vector database. Use this to discover available projects or verify project identifiers before performing project-specific operations.",
+  name: "codebase.list_projects", 
+  description: "📋 AI ASSISTANT: List all searchable projects. WHEN TO USE: Starting work on unfamiliar codebase, checking what's available to search, or verifying project scope. Shows which codebases have indexed content.",
   inputSchema: {
     type: "object",
     properties: {},
@@ -110,8 +110,8 @@ const LIST_PROJECTS_TOOL_SCHEMA = {
 };
 
 const INDEX_FILE_TOOL_SCHEMA = {
-  name: "indexing.index_file",
-  description: "Index a single file in a project repository. Useful for indexing specific files before git push operations or when you want to immediately make a file searchable. The file will be fetched from the repository and processed with semantic chunking.",
+  name: "codebase.index_file",
+  description: "⚡ AI ASSISTANT: Make specific file searchable NOW. WHEN TO USE: Just wrote important code, created key components, or added crucial docs. Makes it immediately findable for future searches. 🎯 PERFECT FOR: New implementations, important utilities, API endpoints you'll reference later.",
   inputSchema: {
     type: "object",
     properties: {
@@ -133,8 +133,8 @@ const INDEX_FILE_TOOL_SCHEMA = {
 };
 
 const REINDEX_FILE_TOOL_SCHEMA = {
-  name: "indexing.reindex_file",
-  description: "Reindex an existing file in a project repository. This removes the old vectors for the file and creates new ones with the current content. Useful when you know a file has been updated and you want to refresh its semantic representation immediately.",
+  name: "codebase.refresh_file",
+  description: "🔄 AI ASSISTANT: Refresh outdated file in search index. WHEN TO USE: After major edits to important files, when search returns old versions, or after refactoring. Updates the searchable version to match current code. 💡 BETTER than full reindex - targets specific files.",
   inputSchema: {
     type: "object",
     properties: {
@@ -156,8 +156,8 @@ const REINDEX_FILE_TOOL_SCHEMA = {
 };
 
 const FULL_REINDEX_TOOL_SCHEMA = {
-  name: "indexing.full_reindex",
-  description: "Perform a complete reindex of an entire project repository. This clears all existing vectors for the project and reindexes everything from scratch. Use this when you need to rebuild the entire semantic index, such as after major repository changes or configuration updates.",
+  name: "codebase.rebuild_all",
+  description: "🔨 AI ASSISTANT: Rebuild entire project search index from scratch. WHEN TO USE: After major refactoring, when searches consistently return wrong results, or starting fresh. NUCLEAR OPTION - use sparingly. ⚠️ SLOW but thorough - rebuilds complete searchable knowledge base.",
   inputSchema: {
     type: "object",
     properties: {
@@ -175,8 +175,8 @@ const FULL_REINDEX_TOOL_SCHEMA = {
 };
 
 const SCHEDULED_INDEXING_TOOL_SCHEMA = {
-  name: "indexing.check_and_index",
-  description: "Check for new git commits and perform incremental indexing if changes are found. This is ideal for scheduled operations when webhooks are not available. If the project is on the same commit as last indexed, no action is taken. If new commits are found, only changed files are processed for efficiency.",
+  name: "codebase.sync_changes",
+  description: "🤖 AI ASSISTANT: Smart sync - only indexes NEW changes. WHEN TO USE: Want to ensure search is current, working on active codebase, or periodic maintenance. SUPER EFFICIENT - skips if no changes, only processes modified files. 🎯 PERFECT FOR: Development workflows.",
   inputSchema: {
     type: "object",
     properties: {
@@ -314,12 +314,12 @@ export async function POST(request: Request) {
         try {
           let result;
           switch (name) {
-            case 'memory.ingest':
-              if (!toolArgs) throw new Error('Missing arguments for memory.ingest');
+            case 'codebase.store':
+              if (!toolArgs) throw new Error('Missing arguments for codebase.store');
               result = await ingest(toolArgs);
               break;
-            case 'memory.retrieve':
-              if (!toolArgs) throw new Error('Missing arguments for memory.retrieve');
+            case 'codebase.search':
+              if (!toolArgs) throw new Error('Missing arguments for codebase.search');
               result = await retrieve(toolArgs);
               // Track query for metrics
               if (projectId) {
@@ -328,15 +328,15 @@ export async function POST(request: Request) {
                 );
               }
               break;
-            case 'memory.delete_source':
-              if (!toolArgs) throw new Error('Missing arguments for memory.delete_source');
+            case 'codebase.forget':
+              if (!toolArgs) throw new Error('Missing arguments for codebase.forget');
               result = await deleteSource(toolArgs);
               break;
-            case 'memory.list_projects':
+            case 'codebase.list_projects':
               result = await listProjects();
               break;
-            case 'indexing.index_file':
-              if (!toolArgs) throw new Error('Missing arguments for indexing.index_file');
+            case 'codebase.index_file':
+              if (!toolArgs) throw new Error('Missing arguments for codebase.index_file');
               if (!projectId || !project) throw new Error('Project authentication required for indexing operations');
               result = await indexSingleFile(
                 projectId,
@@ -345,8 +345,8 @@ export async function POST(request: Request) {
                 toolArgs.branch || 'main'
               );
               break;
-            case 'indexing.reindex_file':
-              if (!toolArgs) throw new Error('Missing arguments for indexing.reindex_file');
+            case 'codebase.refresh_file':
+              if (!toolArgs) throw new Error('Missing arguments for codebase.refresh_file');
               if (!projectId || !project) throw new Error('Project authentication required for indexing operations');
               result = await reindexSingleFile(
                 projectId,
@@ -355,8 +355,8 @@ export async function POST(request: Request) {
                 toolArgs.branch || 'main'
               );
               break;
-            case 'indexing.full_reindex':
-              if (!toolArgs) throw new Error('Missing arguments for indexing.full_reindex');
+            case 'codebase.rebuild_all':
+              if (!toolArgs) throw new Error('Missing arguments for codebase.rebuild_all');
               if (!projectId || !project) throw new Error('Project authentication required for indexing operations');
               result = await fullReindex(
                 projectId,
@@ -364,8 +364,8 @@ export async function POST(request: Request) {
                 toolArgs.branch || 'main'
               );
               break;
-            case 'indexing.check_and_index':
-              if (!toolArgs) throw new Error('Missing arguments for indexing.check_and_index');
+            case 'codebase.sync_changes':
+              if (!toolArgs) throw new Error('Missing arguments for codebase.sync_changes');
               if (!projectId || !project) throw new Error('Project authentication required for indexing operations');
               result = await scheduledIncrementalIndexing(
                 projectId,
