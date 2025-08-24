@@ -233,6 +233,156 @@ const CLEANUP_PROJECT_TOOL_SCHEMA = {
   }
 };
 
+// Code Validation Tools - Prevent common migration and refactoring errors
+const VALIDATE_SYMBOL_TOOL_SCHEMA = {
+  name: "codebase.validate_symbol",
+  description: "🔍 AI ASSISTANT: CRITICAL VALIDATION TOOL - Use BEFORE referencing any variable, function, enum, type, or property. PREVENTS: 'updateIndexingProgress is not defined', 'project already declared', 'IndexStatus.COMPLETED vs indexing', property mismatches. WHEN TO USE: Before every function call, variable declaration, enum comparison, property access, import statement. ESSENTIAL during migrations, type changes, interface updates. ⚠️ MANDATORY: Always validate symbols before using them - saves hours of debugging build errors.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      symbol_name: {
+        type: "string",
+        description: "The exact symbol name you want to validate (variable, function, enum value, property, etc.). Examples: 'updateIndexingProgress', 'IndexStatus.COMPLETED', 'project.fileCount', 'JobStatus'"
+      },
+      context: {
+        type: "string",
+        description: "Where you're trying to use this symbol. Examples: 'function call in indexing.ts', 'enum comparison in React component', 'property access on Project type', 'import statement'"
+      },
+      expected_type: {
+        type: "string",
+        description: "Optional: What type/category you expect this symbol to be. Examples: 'function', 'enum value', 'property', 'type', 'variable', 'constant'"
+      },
+      file_context: {
+        type: "string", 
+        description: "Optional: The file where you're trying to use this symbol. Helps provide more accurate validation."
+      },
+      project_id: {
+        type: "string",
+        description: "Project identifier to search within. If not provided, searches global scope."
+      }
+    },
+    required: ["symbol_name", "context"]
+  }
+};
+
+const CHECK_INTERFACE_CHANGES_TOOL_SCHEMA = {
+  name: "codebase.check_interface_changes",
+  description: "🔄 AI ASSISTANT: MIGRATION SAFETY CHECKER - Use when changing interfaces, types, or function signatures. PREVENTS: breaking changes, missing properties, parameter mismatches. WHEN TO USE: Before modifying any interface, type definition, function signature, or enum. During migrations when updating from old patterns to new ones. ⚠️ ESSENTIAL: Use this before making any breaking changes to understand impact.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      interface_name: {
+        type: "string",
+        description: "Name of the interface, type, or function being changed. Examples: 'Project', 'IndexingJob', 'updateIndexingProgress', 'CreateProjectData'"
+      },
+      proposed_changes: {
+        type: "string",
+        description: "Description of the changes you want to make. Examples: 'add description field', 'change status from string to enum', 'rename parameter from projectId to jobId'"
+      },
+      change_type: {
+        type: "string",
+        enum: ["add_property", "remove_property", "rename_property", "change_type", "function_signature", "enum_values"],
+        description: "Type of change being made"
+      },
+      project_id: {
+        type: "string",
+        description: "Project identifier to check within. If not provided, checks globally."
+      }
+    },
+    required: ["interface_name", "proposed_changes", "change_type"]
+  }
+};
+
+const FIND_USAGE_PATTERNS_TOOL_SCHEMA = {
+  name: "codebase.find_usage_patterns",
+  description: "📋 AI ASSISTANT: REFACTORING ASSISTANT - Find all usages of a symbol before changing it. PREVENTS: missed references, inconsistent updates, broken calls. WHEN TO USE: Before renaming variables/functions, changing enum values, modifying property names, or updating function signatures. Essential for safe refactoring and migrations. 🎯 PERFECT FOR: Finding all places that need updating when you change something.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      symbol_name: {
+        type: "string",
+        description: "Symbol to find usages of. Examples: 'indexStatus', 'updateIndexingProgress', 'JobStatus.RUNNING', 'project.fileCount'"
+      },
+      usage_type: {
+        type: "string",
+        enum: ["all", "function_calls", "property_access", "enum_values", "imports", "type_annotations"],
+        description: "Type of usage to find. 'all' finds everything, others are specific usage types."
+      },
+      include_similar: {
+        type: "boolean",
+        description: "Whether to include similar/related symbols that might also need updating. Useful for finding patterns like 'fileCount' when searching for 'vectorCount'."
+      },
+      project_id: {
+        type: "string",
+        description: "Project identifier to search within. If not provided, searches globally."
+      }
+    },
+    required: ["symbol_name"]
+  }
+};
+
+const VALIDATE_ENUM_VALUES_TOOL_SCHEMA = {
+  name: "codebase.validate_enum_values",
+  description: "🎯 AI ASSISTANT: ENUM VALIDATOR - Prevents enum case mismatches and non-existent values. PREVENTS: 'indexing' vs 'INDEXING', 'running' vs 'RUNNING', 'Type CANCELLED is not comparable to IDLE|INDEXING|COMPLETED|ERROR'. WHEN TO USE: Before every enum comparison (status === 'VALUE'), switch cases, enum assignments. CRITICAL when migrating from strings to enums or changing casing. ⚠️ CATCHES: The exact TypeScript enum errors that cause build failures.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      enum_name: {
+        type: "string",
+        description: "Name of the enum type. Examples: 'IndexStatus', 'JobStatus', 'TriggerType'"
+      },
+      value_being_used: {
+        type: "string",
+        description: "The enum value you're trying to use. Examples: 'COMPLETED', 'indexing', 'running'"
+      },
+      usage_context: {
+        type: "string",
+        description: "How you're using this enum value. Examples: 'comparison in if statement', 'assignment to variable', 'function parameter', 'switch case'"
+      },
+      project_id: {
+        type: "string",
+        description: "Project identifier to search within. If not provided, searches globally."
+      }
+    },
+    required: ["enum_name", "value_being_used", "usage_context"]
+  }
+};
+
+const CHECK_FUNCTION_SIGNATURE_TOOL_SCHEMA = {
+  name: "codebase.check_function_signature", 
+  description: "🔧 AI ASSISTANT: FUNCTION SIGNATURE VALIDATOR - Ensures correct parameter names, types, and count. PREVENTS: 'Expected 2 arguments but got 4', 'Property jobId does not exist', 'updateIndexingProgress(projectId) vs updateIndexingProgress(jobId)'. WHEN TO USE: Before every function call during migrations, after changing function parameters, when seeing parameter-related errors. ⚠️ CRITICAL: Validates actual function signature against your intended usage - prevents signature mismatch errors.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      function_name: {
+        type: "string",
+        description: "Name of the function to validate. Examples: 'updateIndexingProgress', 'startIndexingJob', 'createProject'"
+      },
+      parameters_attempting: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            name: { type: "string" },
+            type: { type: "string" },
+            value: { type: "string" }
+          }
+        },
+        description: "Array of parameters you're trying to pass. Each should have name, type, and example value."
+      },
+      call_context: {
+        type: "string",
+        description: "Where you're calling this function. Examples: 'in indexing.ts line 150', 'API route handler', 'React component effect'"
+      },
+      project_id: {
+        type: "string",
+        description: "Project identifier to search within. If not provided, searches globally."
+      }
+    },
+    required: ["function_name", "parameters_attempting", "call_context"]
+  }
+};
+
 const ALL_TOOLS = [
   CHECK_CONSTRAINTS_TOOL_SCHEMA,
   INGEST_TOOL_SCHEMA,
@@ -243,7 +393,13 @@ const ALL_TOOLS = [
   REINDEX_FILE_TOOL_SCHEMA,
   FULL_REINDEX_TOOL_SCHEMA,
   SCHEDULED_INDEXING_TOOL_SCHEMA,
-  CLEANUP_PROJECT_TOOL_SCHEMA
+  CLEANUP_PROJECT_TOOL_SCHEMA,
+  // Code Validation Tools
+  VALIDATE_SYMBOL_TOOL_SCHEMA,
+  CHECK_INTERFACE_CHANGES_TOOL_SCHEMA,
+  FIND_USAGE_PATTERNS_TOOL_SCHEMA,
+  VALIDATE_ENUM_VALUES_TOOL_SCHEMA,
+  CHECK_FUNCTION_SIGNATURE_TOOL_SCHEMA
 ];
 
 export async function POST(request: Request) {
@@ -479,6 +635,155 @@ export async function POST(request: Request) {
                 project_id: projectId,
                 message: `Successfully cleaned up all vectors for project ${projectId}. This project's search index has been completely reset.`,
                 warning: "All indexed content for this project has been permanently removed. You may want to run a full reindex to restore the search functionality."
+              };
+              break;
+
+            // Code Validation Tools
+            case 'codebase.validate_symbol':
+              if (!toolArgs) throw new Error('Missing arguments for codebase.validate_symbol');
+              const symbolQuery = `symbol definition ${toolArgs.symbol_name} ${toolArgs.expected_type || ''} ${toolArgs.context}`;
+              const symbolResults = await retrieve({
+                query: symbolQuery,
+                project_id: toolArgs.project_id || projectId,
+                scope: toolArgs.project_id ? 'all' : 'global'
+              });
+              
+              result = {
+                symbol_name: toolArgs.symbol_name,
+                found: (symbolResults.results || []).length > 0,
+                matches: (symbolResults.results || []).map(r => ({
+                  source: r.metadata.source,
+                  type: r.metadata.type,
+                  snippet: r.content.substring(0, 200),
+                  similarity: r.similarity
+                })),
+                validation_status: (symbolResults.results || []).length > 0 ? 'VALID' : 'NOT_FOUND',
+                suggestions: (symbolResults.results || []).length === 0 ? 'Symbol not found. Check spelling, imports, or search for similar symbols.' : 'Symbol found and validated.'
+              };
+              break;
+
+            case 'codebase.check_interface_changes':
+              if (!toolArgs) throw new Error('Missing arguments for codebase.check_interface_changes');
+              const interfaceQuery = `interface type ${toolArgs.interface_name} definition properties fields`;
+              const interfaceResults = await retrieve({
+                query: interfaceQuery,
+                project_id: toolArgs.project_id || projectId,
+                scope: toolArgs.project_id ? 'all' : 'global'
+              });
+              
+              result = {
+                interface_name: toolArgs.interface_name,
+                current_definition_found: (interfaceResults.results || []).length > 0,
+                proposed_changes: toolArgs.proposed_changes,
+                change_type: toolArgs.change_type,
+                current_definitions: (interfaceResults.results || []).map(r => ({
+                  source: r.metadata.source,
+                  content: r.content,
+                  similarity: r.similarity
+                })),
+                impact_warning: "Review all usages of this interface before making changes. Breaking changes may require updating multiple files.",
+                next_step: "Use codebase.find_usage_patterns to find all places that use this interface."
+              };
+              break;
+
+            case 'codebase.find_usage_patterns':
+              if (!toolArgs) throw new Error('Missing arguments for codebase.find_usage_patterns');
+              let usageQuery = toolArgs.symbol_name;
+              
+              // Enhance query based on usage type
+              switch (toolArgs.usage_type) {
+                case 'function_calls':
+                  usageQuery += ' function call invocation';
+                  break;
+                case 'property_access':
+                  usageQuery += ' property access dot notation';
+                  break;
+                case 'enum_values':
+                  usageQuery += ' enum value comparison assignment';
+                  break;
+                case 'imports':
+                  usageQuery += ' import statement require';
+                  break;
+                case 'type_annotations':
+                  usageQuery += ' type annotation interface';
+                  break;
+              }
+              
+              const usageResults = await retrieve({
+                query: usageQuery,
+                project_id: toolArgs.project_id || projectId,
+                scope: toolArgs.project_id ? 'all' : 'global'
+              });
+              
+              result = {
+                symbol_name: toolArgs.symbol_name,
+                usage_type: toolArgs.usage_type || 'all',
+                total_usages_found: (usageResults.results || []).length,
+                usages: (usageResults.results || []).map(r => ({
+                  file: r.metadata.source,
+                  content: r.content,
+                  type: r.metadata.type,
+                  similarity: r.similarity
+                })),
+                refactoring_checklist: (usageResults.results || []).length > 0 ? 
+                  `Found ${(usageResults.results || []).length} usages. Update all these locations when changing ${toolArgs.symbol_name}.` :
+                  'No usages found. Symbol might be safe to change or not indexed yet.'
+              };
+              break;
+
+            case 'codebase.validate_enum_values':
+              if (!toolArgs) throw new Error('Missing arguments for codebase.validate_enum_values');
+              const enumQuery = `enum ${toolArgs.enum_name} values ${toolArgs.value_being_used}`;
+              const enumResults = await retrieve({
+                query: enumQuery,
+                project_id: toolArgs.project_id || projectId,
+                scope: toolArgs.project_id ? 'all' : 'global'
+              });
+              
+              result = {
+                enum_name: toolArgs.enum_name,
+                value_being_used: toolArgs.value_being_used,
+                usage_context: toolArgs.usage_context,
+                enum_found: (enumResults.results || []).length > 0,
+                valid_values: (enumResults.results || []).map(r => {
+                  // Extract enum values from the content
+                  const content = r.content;
+                  const enumMatches = content.match(/enum\s+\w+\s*{([^}]*)}/g);
+                  return {
+                    source: r.metadata.source,
+                    content: content,
+                    similarity: r.similarity
+                  };
+                }),
+                validation_result: (enumResults.results || []).some(r => r.content.includes(toolArgs.value_being_used)) ? 
+                  'VALID' : 'INVALID',
+                suggestions: 'Check the actual enum definition for correct values and casing.'
+              };
+              break;
+
+            case 'codebase.check_function_signature':
+              if (!toolArgs) throw new Error('Missing arguments for codebase.check_function_signature');
+              const funcQuery = `function ${toolArgs.function_name} parameters signature definition`;
+              const funcResults = await retrieve({
+                query: funcQuery,
+                project_id: toolArgs.project_id || projectId,
+                scope: toolArgs.project_id ? 'all' : 'global'
+              });
+              
+              result = {
+                function_name: toolArgs.function_name,
+                parameters_attempting: toolArgs.parameters_attempting,
+                call_context: toolArgs.call_context,
+                function_found: (funcResults.results || []).length > 0,
+                function_definitions: (funcResults.results || []).map(r => ({
+                  source: r.metadata.source,
+                  signature: r.content,
+                  similarity: r.similarity
+                })),
+                validation_status: (funcResults.results || []).length > 0 ? 'FOUND' : 'NOT_FOUND',
+                recommendations: (funcResults.results || []).length > 0 ? 
+                  'Compare your parameters with the actual function signature above.' :
+                  'Function not found. Check function name spelling or imports.'
               };
               break;
             default:
