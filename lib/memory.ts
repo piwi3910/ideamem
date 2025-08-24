@@ -1,8 +1,7 @@
 import { QdrantClient } from '@qdrant/js-client-rest';
-import { parse } from '@babel/parser';
-import traverse from '@babel/traverse';
 import { getConfig } from './config';
 import { v4 as uuidv4 } from 'uuid';
+import { parserFactory, ParseResult, SemanticChunk } from './parsing';
 
 const COLLECTION_NAME = 'ideamem_memory';
 
@@ -73,49 +72,68 @@ export async function ingest(params: IngestParams): Promise<{ success: boolean; 
   
   const qdrant = await getQdrantClient();
 
-  let chunks: string[] = [];
-
-  if (type === 'code' && (language === 'javascript' || language === 'typescript')) {
-    try {
-      const ast = parse(content, { sourceType: 'module', plugins: ['typescript', 'jsx'] });
-      traverse(ast, {
-        enter(path: any) {
-          if (
-            path.isFunctionDeclaration() ||
-            path.isClassDeclaration() ||
-            (path.isVariableDeclaration() && path.node.declarations.some((d: any) => d.init && (d.init.type === 'ArrowFunctionExpression' || d.init.type === 'FunctionExpression')))
-          ) {
-            const node = path.node;
-            if (node.start != null && node.end != null) {
-              chunks.push(content.substring(node.start, node.end));
-            }
-          }
-        },
-      });
-    } catch (e) {
-      console.error('AST parsing failed, falling back to simple chunking:', e);
-      chunks = content.split('\n\n');
-    }
+  // Use the new multi-language parser system
+  const parseResult = parserFactory.parse(content, source, language);
+  
+  let chunks: Array<{ content: string; metadata?: any }> = [];
+  
+  if (parseResult.success && parseResult.chunks.length > 0) {
+    // Use semantic chunks from the parser
+    chunks = parseResult.chunks.map(chunk => ({
+      content: chunk.content,
+      metadata: {
+        type: chunk.type,
+        name: chunk.name,
+        startLine: chunk.startLine,
+        endLine: chunk.endLine,
+        language: chunk.metadata.language,
+        dependencies: chunk.metadata.dependencies || [],
+        exports: chunk.metadata.exports || [],
+        parent: chunk.metadata.parent,
+        visibility: chunk.metadata.visibility,
+        async: chunk.metadata.async,
+        static: chunk.metadata.static,
+        parameters: chunk.metadata.parameters || [],
+        decorators: chunk.metadata.decorators || []
+      }
+    }));
   } else {
-    chunks = content.split('\n\n');
-  }
-
-  if (chunks.length === 0) {
-    chunks.push(content);
+    // Fallback to simple chunking if parsing fails
+    console.warn(`Parsing failed for ${source}, using fallback chunking:`, parseResult.error);
+    const simpleChunks = content.split('\n\n').filter(chunk => chunk.trim().length > 0);
+    if (simpleChunks.length === 0) {
+      simpleChunks.push(content);
+    }
+    chunks = simpleChunks.map(chunk => ({ content: chunk }));
   }
 
   const points = [];
   for (const chunk of chunks) {
-    if (chunk.trim().length === 0) continue;
-    const embedding = await getEmbedding(chunk);
+    if (chunk.content.trim().length === 0) continue;
+    const embedding = await getEmbedding(chunk.content);
     points.push({
       id: uuidv4(),
       vector: embedding,
       payload: { 
         ...params, 
-        content: chunk, 
+        content: chunk.content, 
         project_id: effectiveProjectId,
-        scope: effectiveProjectId === 'global' ? 'global' : 'project'
+        scope: effectiveProjectId === 'global' ? 'global' : 'project',
+        // Add semantic metadata if available
+        ...(chunk.metadata && {
+          chunk_type: chunk.metadata.type,
+          chunk_name: chunk.metadata.name,
+          start_line: chunk.metadata.startLine,
+          end_line: chunk.metadata.endLine,
+          dependencies: chunk.metadata.dependencies,
+          exports: chunk.metadata.exports,
+          parent: chunk.metadata.parent,
+          visibility: chunk.metadata.visibility,
+          is_async: chunk.metadata.async,
+          is_static: chunk.metadata.static,
+          parameters: chunk.metadata.parameters,
+          decorators: chunk.metadata.decorators
+        })
       },
     });
   }
