@@ -30,6 +30,8 @@ export default function AdminPage() {
   const [ollamaStatus, setOllamaStatus] = useState<Status>({ status: 'unknown', message: '' });
   const [embeddingStatus, setEmbeddingStatus] = useState<Status>({ status: 'unknown', message: '' });
   const [isTesting, setIsTesting] = useState(false);
+  const [isRunningScheduler, setIsRunningScheduler] = useState(false);
+  const [schedulerResult, setSchedulerResult] = useState<any>(null);
 
   useEffect(() => {
     fetch('/api/admin/config')
@@ -81,6 +83,29 @@ export default function AdminPage() {
     });
     const result = await response.json();
     setSaveMessage(result.message);
+  };
+
+  const handleRunScheduler = async () => {
+    setIsRunningScheduler(true);
+    setSchedulerResult(null);
+    
+    try {
+      const response = await fetch('/api/scheduler/run', {
+        method: 'POST'
+      });
+      
+      const result = await response.json();
+      setSchedulerResult(result);
+      
+    } catch (error) {
+      setSchedulerResult({
+        success: false,
+        message: 'Failed to run scheduler',
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+    } finally {
+      setIsRunningScheduler(false);
+    }
   };
 
   const getStatusIcon = (status: Status['status']) => {
@@ -270,6 +295,85 @@ export default function AdminPage() {
                       </button>
                     )}
                   </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Scheduler Management */}
+            <div className="card">
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-purple-100 rounded-lg">
+                    <ClockIcon className="h-6 w-6 text-purple-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900">Scheduled Indexing</h3>
+                    <p className="text-sm text-gray-600">Manage and monitor scheduled indexing operations</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <h4 className="font-medium text-gray-900 mb-2">Manual Scheduler Run</h4>
+                  <p className="text-sm text-gray-600 mb-3">
+                    Trigger the scheduler to check all projects and run scheduled indexing for those due.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleRunScheduler}
+                    disabled={isRunningScheduler}
+                    className="btn bg-purple-100 text-purple-700 hover:bg-purple-200"
+                  >
+                    {isRunningScheduler ? (
+                      <ArrowPathIcon className="h-4 w-4 animate-spin mr-2" />
+                    ) : (
+                      <ClockIcon className="h-4 w-4 mr-2" />
+                    )}
+                    {isRunningScheduler ? 'Running...' : 'Run Scheduler Now'}
+                  </button>
+                </div>
+
+                {schedulerResult && (
+                  <div className={twMerge(
+                    "p-4 rounded-lg border",
+                    schedulerResult.success ? "bg-green-50 border-green-200" : "bg-red-50 border-red-200"
+                  )}>
+                    <h4 className={twMerge(
+                      "font-medium mb-2",
+                      schedulerResult.success ? "text-green-900" : "text-red-900"
+                    )}>
+                      Scheduler Result
+                    </h4>
+                    <p className={twMerge(
+                      "text-sm mb-2",
+                      schedulerResult.success ? "text-green-700" : "text-red-700"
+                    )}>
+                      {schedulerResult.message}
+                    </p>
+                    {schedulerResult.results && schedulerResult.results.length > 0 && (
+                      <div className="space-y-1">
+                        {schedulerResult.results.map((result: any, index: number) => (
+                          <div key={index} className="text-xs text-gray-600 font-mono">
+                            {result.projectName}: {result.action} - {result.message}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div className="bg-blue-50 rounded-lg p-4">
+                  <h4 className="font-medium text-gray-900 mb-2">Automation Setup</h4>
+                  <p className="text-sm text-gray-600 mb-3">
+                    For automatic scheduling, set up a cron job to call:
+                  </p>
+                  <code className="block text-xs font-mono bg-gray-800 text-green-400 p-3 rounded">
+                    curl -X POST http://your-domain.com/api/scheduler/run
+                  </code>
+                  <p className="text-xs text-gray-500 mt-2">
+                    Recommended: Every 5-15 minutes depending on your needs
+                  </p>
                 </div>
               </div>
             </div>

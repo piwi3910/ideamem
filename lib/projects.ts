@@ -30,6 +30,12 @@ export interface Project {
   // Git tracking
   lastIndexedCommit?: string;
   lastIndexedBranch?: string;
+  // Scheduled indexing
+  scheduledIndexingEnabled?: boolean;
+  scheduledIndexingInterval?: number; // minutes
+  scheduledIndexingBranch?: string;
+  lastScheduledIndexingAt?: string;
+  scheduledIndexingNextRun?: string;
 }
 
 export interface IndexingJob {
@@ -331,4 +337,64 @@ export async function trackQuery(projectId: string): Promise<void> {
     queriesThisWeek,
     queriesThisMonth
   });
+}
+
+// Scheduled indexing management functions
+
+// Configure scheduled indexing for a project
+export async function configureScheduledIndexing(
+  projectId: string, 
+  enabled: boolean, 
+  intervalMinutes?: number,
+  branch?: string
+): Promise<Project | null> {
+  const updates: Partial<Project> = {
+    scheduledIndexingEnabled: enabled,
+    scheduledIndexingBranch: branch || 'main'
+  };
+
+  if (enabled && intervalMinutes) {
+    updates.scheduledIndexingInterval = intervalMinutes;
+    // Calculate next run time
+    const nextRun = new Date();
+    nextRun.setMinutes(nextRun.getMinutes() + intervalMinutes);
+    updates.scheduledIndexingNextRun = nextRun.toISOString();
+  } else {
+    updates.scheduledIndexingInterval = undefined;
+    updates.scheduledIndexingNextRun = undefined;
+  }
+
+  return await updateProject(projectId, updates);
+}
+
+// Update last scheduled indexing run time and calculate next run
+export async function updateScheduledIndexingRun(
+  projectId: string,
+  success: boolean = true
+): Promise<Project | null> {
+  const project = await getProject(projectId);
+  if (!project || !project.scheduledIndexingEnabled || !project.scheduledIndexingInterval) {
+    return project;
+  }
+
+  const now = new Date();
+  const nextRun = new Date(now.getTime() + project.scheduledIndexingInterval * 60 * 1000);
+
+  return await updateProject(projectId, {
+    lastScheduledIndexingAt: now.toISOString(),
+    scheduledIndexingNextRun: nextRun.toISOString()
+  });
+}
+
+// Get projects that need scheduled indexing
+export async function getProjectsNeedingScheduledIndexing(): Promise<Project[]> {
+  const projects = await loadProjects();
+  const now = new Date();
+
+  return projects.filter(project => 
+    project.scheduledIndexingEnabled &&
+    project.scheduledIndexingNextRun &&
+    new Date(project.scheduledIndexingNextRun) <= now &&
+    project.indexStatus !== 'indexing' // Don't start if already indexing
+  );
 }

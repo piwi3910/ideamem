@@ -54,6 +54,12 @@ interface Project {
   lastWebhookCommit?: string;
   lastWebhookBranch?: string;
   lastWebhookAuthor?: string;
+  // Scheduled indexing
+  scheduledIndexingEnabled?: boolean;
+  scheduledIndexingInterval?: number;
+  scheduledIndexingBranch?: string;
+  lastScheduledIndexingAt?: string;
+  scheduledIndexingNextRun?: string;
 }
 
 interface IndexingJob {
@@ -99,9 +105,23 @@ export default function ProjectDetailPage() {
     webhookEnabled: false
   });
 
+  // Scheduled indexing state
+  const [scheduledIndexingInfo, setScheduledIndexingInfo] = useState<{
+    enabled: boolean;
+    interval: number;
+    branch: string;
+    lastRun?: string;
+    nextRun?: string;
+  }>({
+    enabled: false,
+    interval: 60,
+    branch: 'main'
+  });
+
   useEffect(() => {
     loadProject();
     loadWebhookInfo();
+    loadScheduledIndexingInfo();
     // Poll for indexing updates every 2 seconds
     const interval = setInterval(loadIndexingJob, 2000);
     return () => clearInterval(interval);
@@ -228,6 +248,49 @@ export default function ProjectDetailPage() {
       }
     } catch (error) {
       console.error('Failed to toggle webhook:', error);
+    }
+  };
+
+  // Scheduled indexing functions
+  const loadScheduledIndexingInfo = async () => {
+    try {
+      const response = await fetch(`/api/projects/${projectId}/schedule`);
+      if (response.ok) {
+        const data = await response.json();
+        setScheduledIndexingInfo({
+          enabled: data.scheduledIndexingEnabled || false,
+          interval: data.scheduledIndexingInterval || 60,
+          branch: data.scheduledIndexingBranch || 'main',
+          lastRun: data.lastScheduledIndexingAt,
+          nextRun: data.scheduledIndexingNextRun
+        });
+      }
+    } catch (error) {
+      console.error('Failed to load scheduled indexing info:', error);
+    }
+  };
+
+  const updateScheduledIndexing = async (enabled: boolean, interval?: number, branch?: string) => {
+    try {
+      const response = await fetch(`/api/projects/${projectId}/schedule`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          enabled,
+          intervalMinutes: enabled ? interval || scheduledIndexingInfo.interval : undefined,
+          branch: branch || scheduledIndexingInfo.branch
+        })
+      });
+      if (response.ok) {
+        await loadScheduledIndexingInfo();
+        await loadProject(); // Refresh project data
+      } else {
+        const errorData = await response.json();
+        alert(errorData.error || 'Failed to update scheduled indexing');
+      }
+    } catch (error) {
+      console.error('Failed to update scheduled indexing:', error);
+      alert('Failed to update scheduled indexing');
     }
   };
 
@@ -585,6 +648,108 @@ export default function ProjectDetailPage() {
                 <BoltIcon className="h-4 w-4" />
                 Webhook Setup
               </button>
+            </div>
+
+            {/* Scheduled Indexing */}
+            <div className="card">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Scheduled Indexing</h3>
+              <p className="text-gray-600 text-sm mb-4">
+                Automatically check for changes and re-index when webhooks aren't available.
+              </p>
+              
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Status</span>
+                  <span className={twMerge(
+                    "text-sm font-medium",
+                    scheduledIndexingInfo.enabled ? "text-green-600" : "text-gray-500"
+                  )}>
+                    {scheduledIndexingInfo.enabled ? "Enabled" : "Disabled"}
+                  </span>
+                </div>
+                
+                {scheduledIndexingInfo.enabled && (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">Interval</span>
+                      <span className="text-sm text-gray-600">
+                        {scheduledIndexingInfo.interval >= 60 
+                          ? `${Math.floor(scheduledIndexingInfo.interval / 60)}h ${scheduledIndexingInfo.interval % 60}m`
+                          : `${scheduledIndexingInfo.interval}m`
+                        }
+                      </span>
+                    </div>
+                    
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">Branch</span>
+                      <span className="text-sm text-gray-600 font-mono">
+                        {scheduledIndexingInfo.branch}
+                      </span>
+                    </div>
+                    
+                    {scheduledIndexingInfo.nextRun && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium">Next Run</span>
+                        <span className="text-xs text-gray-500">
+                          {formatDate(scheduledIndexingInfo.nextRun)}
+                        </span>
+                      </div>
+                    )}
+                    
+                    {scheduledIndexingInfo.lastRun && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium">Last Run</span>
+                        <span className="text-xs text-gray-500">
+                          {formatDate(scheduledIndexingInfo.lastRun)}
+                        </span>
+                      </div>
+                    )}
+                  </>
+                )}
+                
+                <div className="space-y-2">
+                  {!scheduledIndexingInfo.enabled ? (
+                    <div className="space-y-2">
+                      <select 
+                        className="input text-sm"
+                        value={scheduledIndexingInfo.interval}
+                        onChange={(e) => setScheduledIndexingInfo(prev => ({ ...prev, interval: parseInt(e.target.value) }))}
+                      >
+                        <option value={5}>Every 5 minutes</option>
+                        <option value={15}>Every 15 minutes</option>
+                        <option value={30}>Every 30 minutes</option>
+                        <option value={60}>Every hour</option>
+                        <option value={120}>Every 2 hours</option>
+                        <option value={360}>Every 6 hours</option>
+                        <option value={720}>Every 12 hours</option>
+                        <option value={1440}>Every 24 hours</option>
+                      </select>
+                      <input
+                        type="text"
+                        className="input text-sm"
+                        placeholder="Branch (default: main)"
+                        value={scheduledIndexingInfo.branch}
+                        onChange={(e) => setScheduledIndexingInfo(prev => ({ ...prev, branch: e.target.value || 'main' }))}
+                      />
+                      <button
+                        onClick={() => updateScheduledIndexing(true)}
+                        className="btn bg-green-100 text-green-700 hover:bg-green-200 w-full flex items-center justify-center gap-2"
+                      >
+                        <ClockIcon className="h-4 w-4" />
+                        Enable Scheduling
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => updateScheduledIndexing(false)}
+                      className="btn bg-gray-100 text-gray-700 hover:bg-gray-200 w-full flex items-center justify-center gap-2"
+                    >
+                      <XMarkIcon className="h-4 w-4" />
+                      Disable Scheduling
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
 
             {/* Quick Stats */}

@@ -480,6 +480,12 @@ Check for new git commits and perform incremental indexing if changes are found.
 #### Webhooks
 - `POST /api/webhooks/[projectId]` - Receive Git platform webhooks for automatic re-indexing
 
+#### Scheduled Indexing
+- `GET /api/projects/[id]/schedule` - Get scheduled indexing configuration
+- `POST /api/projects/[id]/schedule` - Configure scheduled indexing settings
+- `POST /api/scheduler/run` - Manual scheduler execution for all projects
+- `GET /api/scheduler/run` - Check projects needing scheduled indexing
+
 ## 🖥️ Web Interface
 
 ### Dashboard (`/dashboard`)
@@ -496,11 +502,13 @@ Check for new git commits and perform incremental indexing if changes are found.
 - **Indexing Control** - Start, stop, monitor background indexing
 - **File Statistics** - Detailed counts of indexed files and vectors
 - **Webhook Management** - Configure automatic re-indexing on Git push events
+- **Scheduled Indexing** - Set up periodic incremental indexing with customizable intervals
 
 ### Admin Panel (`/admin`)
 - **Service Configuration** - Qdrant and Ollama connection settings
 - **Health Monitoring** - Service status and connectivity checks
 - **Model Management** - Pull and verify Ollama embedding models
+- **Scheduled Indexing Management** - Manual scheduler execution and automation setup
 - **System Status** - Overall system health dashboard
 
 ### Test Interface (`/test-mcp`)
@@ -547,6 +555,98 @@ Each project maintains:
 - **Indexing Status** - Current processing state
 - **Query Metrics** - Usage statistics and timestamps
 - **Vector Storage** - Project-scoped semantic index
+
+### Scheduled Indexing Setup
+
+Scheduled indexing provides automatic incremental indexing for environments where webhooks aren't available.
+
+#### Configuration Options
+
+**Per-Project Settings:**
+- **Enable/Disable** - Toggle scheduled indexing for individual projects
+- **Interval** - Choose from 5 minutes to 24 hours
+- **Branch** - Specify which branch to monitor (default: main)
+- **Next Run Time** - Automatically calculated based on interval
+
+**Available Intervals:**
+- Every 5 minutes
+- Every 15 minutes  
+- Every 30 minutes
+- Every hour
+- Every 2 hours
+- Every 6 hours
+- Every 12 hours
+- Every 24 hours
+
+#### How It Works
+
+1. **Commit Detection** - Checks current git commit vs last indexed commit
+2. **Smart Processing** - Only runs incremental indexing if changes are detected
+3. **Efficiency** - Skips processing if already up to date
+4. **Fallback** - Performs full indexing for first-time projects
+
+#### Automation Setup
+
+**Option 1: Manual Execution (Admin Panel)**
+- Use `/admin` interface to manually trigger scheduler
+- Good for testing and occasional use
+
+**Option 2: Cron Job (Recommended)**
+```bash
+# Add to crontab for every 5 minutes
+*/5 * * * * curl -X POST http://your-domain.com/api/scheduler/run
+
+# Add to crontab for every 15 minutes  
+*/15 * * * * curl -X POST http://your-domain.com/api/scheduler/run
+```
+
+**Option 3: Docker/Kubernetes CronJob**
+```yaml
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: ideamem-scheduler
+spec:
+  schedule: "*/10 * * * *"  # Every 10 minutes
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: scheduler
+            image: curlimages/curl
+            command: 
+            - curl
+            - -X
+            - POST
+            - http://ideamem-service/api/scheduler/run
+          restartPolicy: OnFailure
+```
+
+**Option 4: GitHub Actions (for public repos)**
+```yaml
+name: IdeaMem Scheduler
+on:
+  schedule:
+    - cron: '*/10 * * * *'  # Every 10 minutes
+  workflow_dispatch:        # Manual trigger
+
+jobs:
+  trigger-indexing:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Scheduler
+        run: |
+          curl -X POST ${{ secrets.IDEAMEM_URL }}/api/scheduler/run
+```
+
+#### Best Practices
+
+- **Start Conservative** - Begin with longer intervals (30+ minutes) and adjust based on your needs
+- **Monitor Performance** - Check admin panel for scheduler results and timing
+- **Use Webhooks When Possible** - Webhooks provide immediate updates; use scheduling as backup
+- **Consider Repository Size** - Larger repositories may need longer intervals
+- **Network Reliability** - Ensure stable network connection for git operations
 
 ## 🔧 Development
 
