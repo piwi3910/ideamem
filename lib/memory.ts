@@ -213,3 +213,44 @@ export async function listProjects(): Promise<{ projects: string[] }> {
   
   return { projects: Array.from(projectIds).sort() };
 }
+
+// Helper function to delete all vectors for a specific project
+export async function deleteAllProjectVectors(projectId: string): Promise<{ success: boolean; deleted_count: number }> {
+  await ensureCollectionExists();
+  const qdrant = await getQdrantClient();
+
+  console.log(`Deleting all vectors for project: ${projectId}`);
+
+  // Use Qdrant's delete operation with project filter
+  await qdrant.delete(COLLECTION_NAME, {
+    filter: {
+      must: [
+        {
+          key: 'project_id',
+          match: { value: projectId },
+        },
+      ],
+    },
+  });
+
+  // Get count of remaining vectors for verification (optional)
+  const scrollResult = await qdrant.scroll(COLLECTION_NAME, {
+    limit: 1,
+    filter: {
+      must: [
+        {
+          key: 'project_id',
+          match: { value: projectId },
+        },
+      ],
+    },
+    with_payload: false,
+    with_vector: false
+  });
+
+  const remainingCount = scrollResult.points.length;
+  const deletedCount = remainingCount === 0 ? 0 : -1; // -1 means we can't determine exact count
+
+  console.log(`Bulk deletion completed for project ${projectId}`);
+  return { success: true, deleted_count: deletedCount };
+}

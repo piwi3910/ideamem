@@ -5,7 +5,7 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import { ingest } from './memory';
 import { updateIndexingProgress, IndexingJob, updateProject, getProject } from './projects';
-import { deleteSource, listProjects } from './memory';
+import { deleteSource, listProjects, deleteAllProjectVectors } from './memory';
 
 const execAsync = promisify(exec);
 
@@ -797,7 +797,7 @@ export async function fullReindex(
     // Clear all existing project vectors
     // Note: We'll need to implement a function to delete all vectors for a project
     try {
-      await deleteAllProjectVectors(projectId);
+      await deleteProjectVectors(projectId);
     } catch (error) {
       console.warn('Failed to clear existing vectors, continuing with reindex:', error);
     }
@@ -890,20 +890,12 @@ export async function scheduledIncrementalIndexing(
 }
 
 // Helper function to delete all vectors for a project
-async function deleteAllProjectVectors(projectId: string): Promise<void> {
-  // This would need to be implemented based on your vector storage
-  // For now, we'll use a placeholder that attempts to delete by project scope
+async function deleteProjectVectors(projectId: string): Promise<void> {
   console.log(`Clearing all vectors for project ${projectId}`);
   
-  // Note: This is a simplified approach. In a production system, 
-  // you might want to query for all sources first, then delete them one by one
-  // or implement a bulk delete operation in the memory system
-  
   try {
-    // Try to get all projects to find sources to delete
-    const projects = await listProjects();
-    // This is a placeholder - you'd need to implement bulk project deletion in memory.ts
-    console.log('Project vector cleanup requested - manual cleanup may be required');
+    const result = await deleteAllProjectVectors(projectId);
+    console.log(`Successfully deleted all vectors for project ${projectId}. Deleted count: ${result.deleted_count}`);
   } catch (error) {
     console.warn('Failed to clear project vectors:', error);
     throw error;

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { ingest, retrieve, deleteSource, listProjects } from '@/lib/memory';
 import { trackQuery, getProjectByToken } from '@/lib/projects';
 import { indexSingleFile, reindexSingleFile, fullReindex, scheduledIncrementalIndexing } from '@/lib/indexing';
+import { deleteAllProjectVectors } from '@/lib/memory';
 
 // Define ToolSchema objects for our custom methods
 const INGEST_TOOL_SCHEMA = {
@@ -217,6 +218,21 @@ const CHECK_CONSTRAINTS_TOOL_SCHEMA = {
   }
 };
 
+const CLEANUP_PROJECT_TOOL_SCHEMA = {
+  name: "codebase.cleanup_project",
+  description: "🧹 AI ASSISTANT: Emergency cleanup - removes ALL indexed content for a project. WHEN TO USE: When search returns stale results after file deletions, before full reindex, or when project has orphaned vectors. ⚠️ DESTRUCTIVE: This permanently deletes all vectors for the project.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      project_id: { 
+        type: "string", 
+        description: "Project identifier to completely clean up" 
+      }
+    },
+    required: ["project_id"]
+  }
+};
+
 const ALL_TOOLS = [
   CHECK_CONSTRAINTS_TOOL_SCHEMA,
   INGEST_TOOL_SCHEMA,
@@ -226,7 +242,8 @@ const ALL_TOOLS = [
   INDEX_FILE_TOOL_SCHEMA,
   REINDEX_FILE_TOOL_SCHEMA,
   FULL_REINDEX_TOOL_SCHEMA,
-  SCHEDULED_INDEXING_TOOL_SCHEMA
+  SCHEDULED_INDEXING_TOOL_SCHEMA,
+  CLEANUP_PROJECT_TOOL_SCHEMA
 ];
 
 export async function POST(request: Request) {
@@ -447,6 +464,21 @@ export async function POST(request: Request) {
                 },
                 summary: `Found ${allRules.length} rules (${projectRules.length} project-specific, ${globalRules.length} global) and ${allPreferences.length} preferences (${projectPreferences.length} project-specific, ${globalPreferences.length} global). PROJECT RULES OVERRIDE GLOBAL RULES.`,
                 workflow_reminder: "🚨 CRITICAL: Project-specific constraints take precedence over global ones. Review project rules first, then global rules as fallback."
+              };
+              break;
+            case 'codebase.cleanup_project':
+              if (!toolArgs) throw new Error('Missing arguments for codebase.cleanup_project');
+              if (!projectId || !project) throw new Error('Project authentication required for cleanup operations');
+              
+              console.log(`Emergency cleanup requested for project ${projectId}`);
+              const cleanupResult = await deleteAllProjectVectors(projectId);
+              
+              result = {
+                success: cleanupResult.success,
+                deleted_count: cleanupResult.deleted_count,
+                project_id: projectId,
+                message: `Successfully cleaned up all vectors for project ${projectId}. This project's search index has been completely reset.`,
+                warning: "All indexed content for this project has been permanently removed. You may want to run a full reindex to restore the search functionality."
               };
               break;
             default:
