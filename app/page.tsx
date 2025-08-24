@@ -80,6 +80,48 @@ export default function HomePage() {
           </Link>
         </div>
 
+        {/* Global Management Section */}
+        <div className="mb-12">
+          <h3 className="text-2xl font-semibold text-gray-900 mb-6 text-center">Global Knowledge Management</h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <Link href="/rules" className="card hover:shadow-md transition-shadow">
+              <div className="flex items-center mb-4">
+                <div className="p-3 bg-blue-100 rounded-lg">
+                  <ServerIcon className="h-6 w-6 text-blue-600" />
+                </div>
+                <h4 className="ml-4 text-lg font-semibold text-gray-900">Rules</h4>
+              </div>
+              <p className="text-gray-600">
+                Manage global coding standards, style guides, and architectural constraints used by MCP validation tools.
+              </p>
+            </Link>
+
+            <Link href="/preferences" className="card hover:shadow-md transition-shadow">
+              <div className="flex items-center mb-4">
+                <div className="p-3 bg-purple-100 rounded-lg">
+                  <Cog6ToothIcon className="h-6 w-6 text-purple-600" />
+                </div>
+                <h4 className="ml-4 text-lg font-semibold text-gray-900">Preferences</h4>
+              </div>
+              <p className="text-gray-600">
+                Configure universal development preferences, tooling choices, and workflow settings.
+              </p>
+            </Link>
+
+            <Link href="/docs" className="card hover:shadow-md transition-shadow">
+              <div className="flex items-center mb-4">
+                <div className="p-3 bg-indigo-100 rounded-lg">
+                  <ChartBarIcon className="h-6 w-6 text-indigo-600" />
+                </div>
+                <h4 className="ml-4 text-lg font-semibold text-gray-900">Documentation</h4>
+              </div>
+              <p className="text-gray-600">
+                Add Git repositories with comprehensive documentation for languages and frameworks.
+              </p>
+            </Link>
+          </div>
+        </div>
+
         {/* Stats Section */}
         <div className="card">
           <h3 className="text-lg font-semibold text-gray-900 mb-6">System Overview</h3>

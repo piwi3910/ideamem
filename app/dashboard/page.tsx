@@ -261,13 +261,29 @@ export default function DashboardPage() {
               </Link>
               <p className="text-gray-600 mt-1">Project Management Dashboard</p>
             </div>
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="btn btn-primary flex items-center gap-2"
-            >
-              <PlusIcon className="h-5 w-5" />
-              New Project
-            </button>
+            <div className="flex items-center gap-3">
+              <div className="hidden md:flex items-center gap-2">
+                <Link href="/rules" className="btn btn-secondary text-sm">
+                  Rules
+                </Link>
+                <Link href="/preferences" className="btn btn-secondary text-sm">
+                  Preferences
+                </Link>
+                <Link href="/docs" className="btn btn-secondary text-sm">
+                  Docs
+                </Link>
+                <Link href="/admin" className="btn btn-secondary text-sm">
+                  Admin
+                </Link>
+              </div>
+              <button
+                onClick={() => setShowCreateModal(true)}
+                className="btn btn-primary flex items-center gap-2"
+              >
+                <PlusIcon className="h-5 w-5" />
+                New Project
+              </button>
+            </div>
           </div>
         </div>
       </header>

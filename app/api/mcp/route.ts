@@ -383,6 +383,74 @@ const CHECK_FUNCTION_SIGNATURE_TOOL_SCHEMA = {
   }
 };
 
+// Documentation Tools
+const DOCS_LIST_REPOSITORIES_TOOL_SCHEMA = {
+  name: "docs.list_repositories",
+  description: "📚 AI ASSISTANT: List all documentation repositories available for indexing. WHEN TO USE: To see what documentation sources are available, check repository status, or before adding/indexing repositories. Returns repository metadata including indexing status and document counts.",
+  inputSchema: {
+    type: "object",
+    properties: {},
+    required: []
+  }
+};
+
+const DOCS_ADD_REPOSITORY_TOOL_SCHEMA = {
+  name: "docs.add_repository", 
+  description: "📝 AI ASSISTANT: Add a new documentation source for indexing. WHEN TO USE: When you want to add comprehensive documentation that MCP clients can search. Supports 3 types: 1) Git repositories (GitHub, GitLab, etc.), 2) llms.txt files (AI-optimized documentation), 3) Websites (documentation sites). Just provide any URL - the system automatically detects the type and extracts relevant information.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      url: { 
+        type: "string", 
+        description: "Any documentation URL. Examples: Git repos ('https://github.com/facebook/react'), llms.txt files ('https://example.com/llms.txt'), or documentation websites ('https://docs.example.com'). The system auto-detects the source type and extracts name, description, languages, and content structure." 
+      }
+    },
+    required: ["url"]
+  }
+};
+
+const DOCS_INDEX_REPOSITORY_TOOL_SCHEMA = {
+  name: "docs.index_repository",
+  description: "🚀 AI ASSISTANT: Start indexing a documentation repository. WHEN TO USE: After adding a repository or to re-index updated documentation. This clones the repository and extracts README files, documentation folders, API guides, and code examples for semantic search.",
+  inputSchema: {
+    type: "object", 
+    properties: {
+      repository_id: { 
+        type: "string", 
+        description: "ID of the repository to index (from docs.list_repositories)" 
+      }
+    },
+    required: ["repository_id"]
+  }
+};
+
+const DOCS_SEARCH_TOOL_SCHEMA = {
+  name: "docs.search",
+  description: "🔍 AI ASSISTANT: Search indexed documentation repositories for specific information. WHEN TO USE: To find API documentation, usage examples, best practices, or technical guides from indexed repositories. Returns relevant documentation snippets with source information.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      query: { 
+        type: "string", 
+        description: "Natural language search query. Examples: 'React useState hook examples', 'TypeScript interface syntax', 'Next.js routing configuration', 'Python async/await patterns'" 
+      },
+      repository_filter: { 
+        type: "string", 
+        description: "Optional: Filter results to specific repository name. Use exact repository name from docs.list_repositories." 
+      },
+      language_filter: { 
+        type: "string", 
+        description: "Optional: Filter by programming language. Examples: 'javascript', 'typescript', 'python', 'go'" 
+      },
+      limit: { 
+        type: "number", 
+        description: "Maximum number of results to return (default: 5, max: 10)" 
+      }
+    },
+    required: ["query"]
+  }
+};
+
 const ALL_TOOLS = [
   CHECK_CONSTRAINTS_TOOL_SCHEMA,
   INGEST_TOOL_SCHEMA,
@@ -399,7 +467,12 @@ const ALL_TOOLS = [
   CHECK_INTERFACE_CHANGES_TOOL_SCHEMA,
   FIND_USAGE_PATTERNS_TOOL_SCHEMA,
   VALIDATE_ENUM_VALUES_TOOL_SCHEMA,
-  CHECK_FUNCTION_SIGNATURE_TOOL_SCHEMA
+  CHECK_FUNCTION_SIGNATURE_TOOL_SCHEMA,
+  // Documentation Tools
+  DOCS_LIST_REPOSITORIES_TOOL_SCHEMA,
+  DOCS_ADD_REPOSITORY_TOOL_SCHEMA,
+  DOCS_INDEX_REPOSITORY_TOOL_SCHEMA,
+  DOCS_SEARCH_TOOL_SCHEMA
 ];
 
 export async function POST(request: Request) {
@@ -650,15 +723,15 @@ export async function POST(request: Request) {
               
               result = {
                 symbol_name: toolArgs.symbol_name,
-                found: (symbolResults.results || []).length > 0,
-                matches: (symbolResults.results || []).map(r => ({
+                found: (symbolResults || []).length > 0,
+                matches: (symbolResults || []).map((r: any) => ({
                   source: r.metadata.source,
                   type: r.metadata.type,
                   snippet: r.content.substring(0, 200),
                   similarity: r.similarity
                 })),
-                validation_status: (symbolResults.results || []).length > 0 ? 'VALID' : 'NOT_FOUND',
-                suggestions: (symbolResults.results || []).length === 0 ? 'Symbol not found. Check spelling, imports, or search for similar symbols.' : 'Symbol found and validated.'
+                validation_status: (symbolResults || []).length > 0 ? 'VALID' : 'NOT_FOUND',
+                suggestions: (symbolResults || []).length === 0 ? 'Symbol not found. Check spelling, imports, or search for similar symbols.' : 'Symbol found and validated.'
               };
               break;
 
@@ -673,10 +746,10 @@ export async function POST(request: Request) {
               
               result = {
                 interface_name: toolArgs.interface_name,
-                current_definition_found: (interfaceResults.results || []).length > 0,
+                current_definition_found: (interfaceResults || []).length > 0,
                 proposed_changes: toolArgs.proposed_changes,
                 change_type: toolArgs.change_type,
-                current_definitions: (interfaceResults.results || []).map(r => ({
+                current_definitions: (interfaceResults || []).map((r: any) => ({
                   source: r.metadata.source,
                   content: r.content,
                   similarity: r.similarity
@@ -718,15 +791,15 @@ export async function POST(request: Request) {
               result = {
                 symbol_name: toolArgs.symbol_name,
                 usage_type: toolArgs.usage_type || 'all',
-                total_usages_found: (usageResults.results || []).length,
-                usages: (usageResults.results || []).map(r => ({
+                total_usages_found: (usageResults || []).length,
+                usages: (usageResults || []).map((r: any) => ({
                   file: r.metadata.source,
                   content: r.content,
                   type: r.metadata.type,
                   similarity: r.similarity
                 })),
-                refactoring_checklist: (usageResults.results || []).length > 0 ? 
-                  `Found ${(usageResults.results || []).length} usages. Update all these locations when changing ${toolArgs.symbol_name}.` :
+                refactoring_checklist: (usageResults || []).length > 0 ? 
+                  `Found ${(usageResults || []).length} usages. Update all these locations when changing ${toolArgs.symbol_name}.` :
                   'No usages found. Symbol might be safe to change or not indexed yet.'
               };
               break;
@@ -744,8 +817,8 @@ export async function POST(request: Request) {
                 enum_name: toolArgs.enum_name,
                 value_being_used: toolArgs.value_being_used,
                 usage_context: toolArgs.usage_context,
-                enum_found: (enumResults.results || []).length > 0,
-                valid_values: (enumResults.results || []).map(r => {
+                enum_found: (enumResults || []).length > 0,
+                valid_values: (enumResults || []).map((r: any) => {
                   // Extract enum values from the content
                   const content = r.content;
                   const enumMatches = content.match(/enum\s+\w+\s*{([^}]*)}/g);
@@ -755,7 +828,7 @@ export async function POST(request: Request) {
                     similarity: r.similarity
                   };
                 }),
-                validation_result: (enumResults.results || []).some(r => r.content.includes(toolArgs.value_being_used)) ? 
+                validation_result: (enumResults || []).some(r => r.content.includes(toolArgs.value_being_used)) ? 
                   'VALID' : 'INVALID',
                 suggestions: 'Check the actual enum definition for correct values and casing.'
               };
@@ -774,18 +847,98 @@ export async function POST(request: Request) {
                 function_name: toolArgs.function_name,
                 parameters_attempting: toolArgs.parameters_attempting,
                 call_context: toolArgs.call_context,
-                function_found: (funcResults.results || []).length > 0,
-                function_definitions: (funcResults.results || []).map(r => ({
+                function_found: (funcResults || []).length > 0,
+                function_definitions: (funcResults || []).map((r: any) => ({
                   source: r.metadata.source,
                   signature: r.content,
                   similarity: r.similarity
                 })),
-                validation_status: (funcResults.results || []).length > 0 ? 'FOUND' : 'NOT_FOUND',
-                recommendations: (funcResults.results || []).length > 0 ? 
+                validation_status: (funcResults || []).length > 0 ? 'FOUND' : 'NOT_FOUND',
+                recommendations: (funcResults || []).length > 0 ? 
                   'Compare your parameters with the actual function signature above.' :
                   'Function not found. Check function name spelling or imports.'
               };
               break;
+
+            // Documentation Tools
+            case 'docs.list_repositories':
+              const repos = await (async () => {
+                try {
+                  const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/api/global/docs/repositories`);
+                  const data = await response.json();
+                  return data.repositories || [];
+                } catch (error) {
+                  console.error('Error fetching repositories:', error);
+                  return [];
+                }
+              })();
+              result = { repositories: repos };
+              break;
+
+            case 'docs.add_repository':
+              if (!toolArgs) throw new Error('Missing arguments for docs.add_repository');
+              const addResponse = await (async () => {
+                try {
+                  const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/api/global/docs/repositories`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      url: toolArgs.url
+                    })
+                  });
+                  return await response.json();
+                } catch (error) {
+                  return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+                }
+              })();
+              result = addResponse;
+              break;
+
+            case 'docs.index_repository':
+              if (!toolArgs) throw new Error('Missing arguments for docs.index_repository');
+              const indexResponse = await (async () => {
+                try {
+                  const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/api/global/docs/index`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ repositoryId: toolArgs.repository_id })
+                  });
+                  return await response.json();
+                } catch (error) {
+                  return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+                }
+              })();
+              result = indexResponse;
+              break;
+
+            case 'docs.search':
+              if (!toolArgs) throw new Error('Missing arguments for docs.search');
+              const searchResults = await retrieve({
+                query: toolArgs.query,
+                project_id: 'global',
+                scope: 'global',
+                filters: {
+                  type: 'documentation',
+                  ...(toolArgs.language_filter && { language: toolArgs.language_filter }),
+                  ...(toolArgs.repository_filter && { source: toolArgs.repository_filter })
+                }
+              });
+              
+              const limitedResults = (searchResults || []).slice(0, toolArgs.limit || 5);
+              result = {
+                query: toolArgs.query,
+                total_results: (searchResults || []).length,
+                results: limitedResults.map((r: any) => ({
+                  content: r.content,
+                  source: r.metadata.source,
+                  repository: r.metadata.source.split('/')[0],
+                  file_path: r.metadata.source.split('/').slice(1).join('/'),
+                  language: r.metadata.language,
+                  similarity: r.similarity
+                }))
+              };
+              break;
+
             default:
               return NextResponse.json({
                 jsonrpc: '2.0',
