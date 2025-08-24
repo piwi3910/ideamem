@@ -6,7 +6,7 @@ import { indexSingleFile, reindexSingleFile, fullReindex, scheduledIncrementalIn
 // Define ToolSchema objects for our custom methods
 const INGEST_TOOL_SCHEMA = {
   name: "codebase.store",
-  description: "🤖 AI ASSISTANT: Store code/docs for future semantic search. WHEN TO USE: After reading important files, discovering key implementations, or learning new patterns. Creates searchable knowledge base. 💡 TIP: Use this when you find solutions, patterns, or important code - makes future searches much more effective than re-reading files.",
+  description: "🤖 AI ASSISTANT: Store code/docs for future semantic search. WHEN TO USE: After reading important files, discovering key implementations, or learning new patterns. Creates searchable knowledge base. 💡 TIP: Use this when you find solutions, patterns, or important code - makes future searches much more effective than re-reading files. ⚠️ CONTENT TYPE GUIDANCE: Use 'rule' for coding standards/constraints, 'user_preference' for settings/preferences, 'code' for implementations, 'documentation' for guides, 'conversation' for discussions.",
   inputSchema: {
     type: "object",
     properties: {
@@ -21,7 +21,7 @@ const INGEST_TOOL_SCHEMA = {
       type: { 
         type: "string", 
         enum: ["code", "documentation", "conversation", "user_preference", "rule"], 
-        description: "Content category that affects processing: 'code' enables AST parsing for JS/TS with function/class extraction, 'documentation' for guides/specs/READMEs, 'conversation' for chat logs/discussions, 'user_preference' for settings/configurations, 'rule' for business rules and coding constraints." 
+        description: "Content category that affects processing: 'code' enables AST parsing for JS/TS with function/class extraction, 'documentation' for guides/specs/READMEs, 'conversation' for chat logs/discussions, 'user_preference' for settings/configurations, 'rule' for business rules and coding constraints. CRITICAL: Use 'rule' for coding standards, style guides, architecture constraints, security policies. Use 'user_preference' for IDE settings, team preferences, workflow choices. These types get PRIORITY in search results to ensure compliance." 
       },
       language: { 
         type: "string", 
@@ -43,7 +43,7 @@ const INGEST_TOOL_SCHEMA = {
 
 const RETRIEVE_TOOL_SCHEMA = {
   name: "codebase.search",
-  description: "🔍 AI ASSISTANT: SEARCH FIRST before Read/Grep! Finds code by meaning, not just keywords. EXAMPLES: 'authentication patterns', 'error handling in APIs', 'React component lifecycle', 'database queries', 'webhook validation'. 🚀 MUCH FASTER than grep - understands context, finds similar implementations even with different names.",
+  description: "🔍 AI ASSISTANT: SEARCH FIRST before Read/Grep! Finds code by meaning, not just keywords. EXAMPLES: 'authentication patterns', 'error handling in APIs', 'React component lifecycle', 'database queries', 'webhook validation'. 🚀 MUCH FASTER than grep - understands context, finds similar implementations even with different names. 🎯 SMART WORKFLOW: Always search for 'rules' and 'user_preferences' first when starting work to understand constraints and preferences before coding.",
   inputSchema: {
     type: "object",
     properties: {
@@ -193,7 +193,32 @@ const SCHEDULED_INDEXING_TOOL_SCHEMA = {
   }
 };
 
+const CHECK_CONSTRAINTS_TOOL_SCHEMA = {
+  name: "codebase.check_constraints",
+  description: "🚨 AI ASSISTANT: ALWAYS USE FIRST before coding! Automatically searches for rules and user preferences that must be followed. CRITICAL WORKFLOW: Run this before writing any code to ensure compliance with coding standards, style guides, architecture constraints, and user preferences. Returns all relevant rules and preferences for the current project.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      project_id: {
+        type: "string",
+        description: "Project identifier to check constraints for. If not provided, searches global constraints only."
+      },
+      scope: {
+        type: "string",
+        enum: ["global", "project", "all"],
+        description: "Constraint scope: 'global' searches only global rules/preferences, 'project' searches only project-specific ones, 'all' searches both (recommended)."
+      },
+      coding_task: {
+        type: "string",
+        description: "Brief description of what you're about to code (e.g., 'React component', 'API endpoint', 'database schema'). Helps find relevant constraints."
+      }
+    },
+    required: []
+  }
+};
+
 const ALL_TOOLS = [
+  CHECK_CONSTRAINTS_TOOL_SCHEMA,
   INGEST_TOOL_SCHEMA,
   RETRIEVE_TOOL_SCHEMA,
   DELETE_SOURCE_TOOL_SCHEMA,
@@ -372,6 +397,33 @@ export async function POST(request: Request) {
                 project.gitRepo,
                 toolArgs.branch || 'main'
               );
+              break;
+            case 'codebase.check_constraints':
+              // Smart constraint checking - prioritizes rules and user_preferences
+              const constraintQuery = toolArgs?.coding_task 
+                ? `${toolArgs.coding_task} coding standards rules preferences constraints`
+                : 'coding standards style guide architecture constraints user preferences';
+              
+              const rulesResults = await retrieve({
+                query: constraintQuery,
+                project_id: toolArgs?.project_id,
+                scope: toolArgs?.scope || 'all',
+                filters: { type: 'rule' }
+              });
+              
+              const preferencesResults = await retrieve({
+                query: constraintQuery,
+                project_id: toolArgs?.project_id,
+                scope: toolArgs?.scope || 'all',
+                filters: { type: 'user_preference' }
+              });
+              
+              result = {
+                rules: rulesResults,
+                preferences: preferencesResults,
+                summary: `Found ${rulesResults.length} rules and ${preferencesResults.length} user preferences. ALWAYS follow these constraints when coding.`,
+                workflow_reminder: "🚨 CRITICAL: Review these constraints before writing any code. They take precedence over default coding practices."
+              };
               break;
             default:
               return NextResponse.json({
