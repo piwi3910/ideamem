@@ -69,8 +69,13 @@ export default function DashboardPage() {
   useEffect(() => {
     loadProjects();
     // Poll for indexing updates every 2 seconds
-    const interval = setInterval(loadIndexingJobs, 2000);
-    return () => clearInterval(interval);
+    const jobsInterval = setInterval(loadIndexingJobs, 2000);
+    // Also refresh projects every 10 seconds to ensure status stays in sync
+    const projectsInterval = setInterval(loadProjects, 10000);
+    return () => {
+      clearInterval(jobsInterval);
+      clearInterval(projectsInterval);
+    };
   }, []);
 
   const loadProjects = async () => {
@@ -92,19 +97,7 @@ export default function DashboardPage() {
       const response = await fetch('/api/projects/indexing/status');
       if (response.ok) {
         const data = await response.json();
-        const newJobs = data.jobs;
-        
-        // Check if any previously running jobs are no longer in the response
-        const previousJobIds = Object.keys(indexingJobs);
-        const currentJobIds = Object.keys(newJobs);
-        const completedJobs = previousJobIds.filter(id => !currentJobIds.includes(id));
-        
-        setIndexingJobs(newJobs);
-        
-        // If jobs completed, refresh projects to get updated status
-        if (completedJobs.length > 0) {
-          await loadProjects();
-        }
+        setIndexingJobs(data.jobs);
       }
     } catch (error) {
       console.error('Failed to load indexing jobs:', error);
@@ -206,8 +199,17 @@ export default function DashboardPage() {
   };
 
 
-  const getStatusIcon = (status: Project['indexStatus']) => {
-    switch (status) {
+  const getActualStatus = (project: Project) => {
+    // If project thinks it's indexing but there's no active job, it must be completed
+    if (project.indexStatus === 'indexing' && !indexingJobs[project.id]) {
+      return 'completed';
+    }
+    return project.indexStatus;
+  };
+
+  const getStatusIcon = (project: Project) => {
+    const actualStatus = getActualStatus(project);
+    switch (actualStatus) {
       case 'completed':
         return <CheckCircleIcon className="h-5 w-5 text-green-500" />;
       case 'failed':
@@ -221,8 +223,9 @@ export default function DashboardPage() {
     }
   };
 
-  const getStatusText = (status: Project['indexStatus']) => {
-    switch (status) {
+  const getStatusText = (project: Project) => {
+    const actualStatus = getActualStatus(project);
+    switch (actualStatus) {
       case 'completed': return 'Indexed';
       case 'failed': return 'Failed';
       case 'indexing': return 'Indexing';
@@ -302,7 +305,7 @@ export default function DashboardPage() {
                       )}
                     </div>
                     <div className="flex items-center ml-4">
-                      {getStatusIcon(project.indexStatus)}
+                      {getStatusIcon(project)}
                     </div>
                   </div>
 
@@ -318,16 +321,16 @@ export default function DashboardPage() {
                       <span className="text-sm text-gray-500">Status</span>
                       <span className={twMerge(
                         "text-sm font-medium",
-                        project.indexStatus === 'completed' && 'text-green-600',
-                        project.indexStatus === 'failed' && 'text-red-600',
-                        project.indexStatus === 'indexing' && 'text-blue-600',
-                        (project.indexStatus === 'pending' || project.indexStatus === 'cancelled') && 'text-gray-500'
+                        getActualStatus(project) === 'completed' && 'text-green-600',
+                        getActualStatus(project) === 'failed' && 'text-red-600',
+                        getActualStatus(project) === 'indexing' && 'text-blue-600',
+                        (getActualStatus(project) === 'pending' || getActualStatus(project) === 'cancelled') && 'text-gray-500'
                       )}>
-                        {getStatusText(project.indexStatus)}
+                        {getStatusText(project)}
                       </span>
                     </div>
                     
-                    {project.indexStatus === 'indexing' && job && (
+                    {getActualStatus(project) === 'indexing' && job && (
                       <div>
                         <div className="w-full bg-gray-200 rounded-full h-2 mb-2">
                           <div 
@@ -341,21 +344,21 @@ export default function DashboardPage() {
                       </div>
                     )}
 
-                    {project.indexStatus === 'completed' && (
+                    {getActualStatus(project) === 'completed' && (
                       <div className="flex justify-between text-sm text-gray-600">
                         <span>Files: {project.fileCount || 0}</span>
                         <span>Vectors: {project.vectorCount || 0}</span>
                       </div>
                     )}
 
-                    {project.indexStatus === 'failed' && project.lastError && (
+                    {getActualStatus(project) === 'failed' && project.lastError && (
                       <p className="text-sm text-red-600 mt-1">{project.lastError}</p>
                     )}
                   </div>
 
                   {/* Actions */}
                   <div className="flex flex-wrap gap-2 pt-4 border-t border-gray-200">
-                    {project.indexStatus === 'indexing' ? (
+                    {getActualStatus(project) === 'indexing' ? (
                       <button
                         onClick={() => stopIndexing(project.id)}
                         className="btn bg-red-100 text-red-700 hover:bg-red-200 flex-1 flex items-center justify-center gap-1"
@@ -369,7 +372,7 @@ export default function DashboardPage() {
                         className="btn bg-green-100 text-green-700 hover:bg-green-200 flex-1 flex items-center justify-center gap-1"
                       >
                         <PlayIcon className="h-4 w-4" />
-                        {project.indexStatus === 'completed' ? 'Reindex' : 'Index'}
+                        {getActualStatus(project) === 'completed' ? 'Reindex' : 'Index'}
                       </button>
                     )}
                     
