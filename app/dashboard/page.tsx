@@ -35,6 +35,12 @@ interface Project {
   lastQueryAt?: string;
   queriesThisWeek?: number;
   queriesThisMonth?: number;
+  // Webhook information
+  webhookEnabled?: boolean;
+  lastWebhookAt?: string;
+  lastWebhookCommit?: string;
+  lastWebhookBranch?: string;
+  lastWebhookAuthor?: string;
 }
 
 interface IndexingJob {

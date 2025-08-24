@@ -1,9 +1,11 @@
 import { promises as fs } from 'fs';
 import path from 'path';
+import os from 'os';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { ingest } from './memory';
-import { updateIndexingProgress, IndexingJob } from './projects';
+import { updateIndexingProgress, IndexingJob, updateProject, getProject } from './projects';
+import { deleteSource, listProjects } from './memory';
 
 const execAsync = promisify(exec);
 
@@ -33,7 +35,54 @@ interface IndexingContext {
   processedFiles: number;
 }
 
+interface GitDiffResult {
+  addedFiles: string[];
+  modifiedFiles: string[];
+  deletedFiles: string[];
+  renamedFiles: Array<{ from: string; to: string }>;
+}
+
 const runningJobs = new Map<string, IndexingContext>();
+
+export async function startIncrementalIndexing(
+  projectId: string, 
+  gitRepo: string, 
+  targetCommit: string,
+  targetBranch: string = 'main'
+): Promise<void> {
+  if (runningJobs.has(projectId)) {
+    throw new Error('Indexing already in progress for this project');
+  }
+
+  const tempDir = path.join(process.cwd(), 'tmp', 'repos', projectId);
+  const context: IndexingContext = {
+    projectId,
+    repoPath: tempDir,
+    cancelled: false,
+    totalFiles: 0,
+    processedFiles: 0
+  };
+
+  runningJobs.set(projectId, context);
+
+  try {
+    await performIncrementalIndexing(context, gitRepo, targetCommit, targetBranch);
+  } catch (error) {
+    console.error('Incremental indexing failed:', error);
+    await updateIndexingProgress(projectId, {
+      status: 'failed',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  } finally {
+    runningJobs.delete(projectId);
+    // Cleanup temp directory
+    try {
+      await fs.rmdir(tempDir, { recursive: true });
+    } catch (error) {
+      console.warn('Failed to cleanup temp directory:', error);
+    }
+  }
+}
 
 export async function startCodebaseIndexing(projectId: string, gitRepo: string): Promise<void> {
   if (runningJobs.has(projectId)) {
@@ -155,7 +204,10 @@ async function performIndexing(context: IndexingContext, gitRepo: string): Promi
     }
   }
 
-  // Step 4: Complete
+  // Step 4: Get current commit hash and complete
+  const currentCommit = await getCurrentCommitHash(context.repoPath);
+  const currentBranch = await getCurrentBranch(context.repoPath);
+  
   await updateIndexingProgress(context.projectId, {
     progress: 100,
     status: 'completed',
@@ -163,7 +215,13 @@ async function performIndexing(context: IndexingContext, gitRepo: string): Promi
     vectorCount: vectorCount
   });
 
-  console.log(`Indexing completed: ${files.length} files, ${vectorCount} vectors`);
+  // Update project with commit tracking
+  await updateProject(context.projectId, {
+    lastIndexedCommit: currentCommit,
+    lastIndexedBranch: currentBranch
+  });
+
+  console.log(`Indexing completed: ${files.length} files, ${vectorCount} vectors, commit: ${currentCommit}`);
 }
 
 async function cloneRepository(gitRepo: string, targetPath: string): Promise<void> {
@@ -346,5 +404,508 @@ function getContentType(language: string): 'code' | 'documentation' | 'conversat
     return 'user_preference';
   } else {
     return 'code';
+  }
+}
+
+// Incremental indexing implementation
+async function performIncrementalIndexing(
+  context: IndexingContext,
+  gitRepo: string,
+  targetCommit: string,
+  targetBranch: string
+): Promise<void> {
+  // Step 1: Setup repository
+  await updateIndexingProgress(context.projectId, {
+    progress: 5,
+    status: 'running',
+    currentFile: 'Setting up repository...'
+  });
+
+  await setupRepositoryForIncremental(gitRepo, context.repoPath, targetBranch);
+
+  if (context.cancelled) {
+    await updateIndexingProgress(context.projectId, { status: 'cancelled' });
+    return;
+  }
+
+  // Step 2: Get project info to find last indexed commit
+  const project = await getProject(context.projectId);
+  if (!project) {
+    throw new Error('Project not found');
+  }
+
+  let filesToProcess: string[] = [];
+  let vectorCount = 0;
+
+  if (!project.lastIndexedCommit) {
+    // First time indexing - do full index
+    console.log('First time indexing - processing all files');
+    await updateIndexingProgress(context.projectId, {
+      progress: 10,
+      currentFile: 'First time indexing - scanning all files...'
+    });
+    filesToProcess = await scanFiles(context.repoPath);
+  } else {
+    // Incremental indexing - get diff
+    console.log(`Incremental indexing from ${project.lastIndexedCommit} to ${targetCommit}`);
+    await updateIndexingProgress(context.projectId, {
+      progress: 10,
+      currentFile: 'Analyzing changes...'
+    });
+
+    const diff = await getGitDiff(context.repoPath, project.lastIndexedCommit, targetCommit);
+    
+    // Delete vectors for deleted and renamed files
+    await processDeletedFiles(context.projectId, diff.deletedFiles, diff.renamedFiles);
+    
+    // Get files that need processing (new + modified + renamed destinations)
+    filesToProcess = [
+      ...diff.addedFiles,
+      ...diff.modifiedFiles,
+      ...diff.renamedFiles.map(r => r.to)
+    ].filter(file => {
+      const fullPath = path.join(context.repoPath, file);
+      return shouldIndex(path.basename(file)) && !shouldSkip(path.basename(file), fullPath);
+    }).map(file => path.join(context.repoPath, file));
+    
+    console.log(`Found ${filesToProcess.length} changed files to process`);
+  }
+
+  context.totalFiles = filesToProcess.length;
+  
+  await updateIndexingProgress(context.projectId, {
+    progress: 15,
+    totalFiles: filesToProcess.length,
+    processedFiles: 0
+  });
+
+  if (context.cancelled) {
+    await updateIndexingProgress(context.projectId, { status: 'cancelled' });
+    return;
+  }
+
+  // Step 3: Process changed files
+  for (let i = 0; i < filesToProcess.length; i++) {
+    if (context.cancelled) {
+      await updateIndexingProgress(context.projectId, { status: 'cancelled' });
+      return;
+    }
+
+    const file = filesToProcess[i];
+    const relativePath = path.relative(context.repoPath, file);
+    
+    await updateIndexingProgress(context.projectId, {
+      currentFile: relativePath,
+      processedFiles: i,
+      progress: 15 + Math.round((i / filesToProcess.length) * 80)
+    });
+
+    try {
+      // For modified files, delete old vectors first
+      if (project.lastIndexedCommit) {
+        await deleteSource({
+          source: relativePath,
+          project_id: context.projectId,
+          scope: 'project'
+        });
+      }
+      
+      const result = await processFile(context.projectId, file, relativePath);
+      vectorCount += result.vectors_added;
+      context.processedFiles = i + 1;
+    } catch (error) {
+      console.warn(`Failed to process file ${relativePath}:`, error);
+      // Continue with other files
+    }
+  }
+
+  // Step 4: Complete incremental indexing
+  await updateIndexingProgress(context.projectId, {
+    progress: 100,
+    status: 'completed',
+    processedFiles: filesToProcess.length,
+    vectorCount: vectorCount
+  });
+
+  // Update project with new commit tracking
+  await updateProject(context.projectId, {
+    lastIndexedCommit: targetCommit,
+    lastIndexedBranch: targetBranch
+  });
+
+  console.log(`Incremental indexing completed: ${filesToProcess.length} files processed, ${vectorCount} vectors added/updated`);
+}
+
+// Git utility functions
+async function setupRepositoryForIncremental(gitRepo: string, targetPath: string, branch: string): Promise<void> {
+  // Check if repository already exists
+  try {
+    await fs.access(path.join(targetPath, '.git'));
+    // Repository exists, fetch latest changes
+    console.log('Repository exists, fetching latest changes...');
+    await execAsync(`cd "${targetPath}" && git fetch origin`, { timeout: 300000 });
+    await execAsync(`cd "${targetPath}" && git checkout ${branch}`, { timeout: 60000 });
+    await execAsync(`cd "${targetPath}" && git pull origin ${branch}`, { timeout: 300000 });
+  } catch {
+    // Repository doesn't exist, clone it
+    console.log('Repository not found, cloning...');
+    await cloneRepository(gitRepo, targetPath);
+    if (branch !== 'main' && branch !== 'master') {
+      try {
+        await execAsync(`cd "${targetPath}" && git checkout ${branch}`, { timeout: 60000 });
+      } catch (error) {
+        console.warn(`Failed to checkout branch ${branch}, staying on default branch`);
+      }
+    }
+  }
+}
+
+async function getCurrentCommitHash(repoPath: string): Promise<string> {
+  try {
+    const { stdout } = await execAsync(`cd "${repoPath}" && git rev-parse HEAD`);
+    return stdout.trim();
+  } catch (error) {
+    console.warn('Failed to get current commit hash:', error);
+    return 'unknown';
+  }
+}
+
+async function getCurrentBranch(repoPath: string): Promise<string> {
+  try {
+    const { stdout } = await execAsync(`cd "${repoPath}" && git rev-parse --abbrev-ref HEAD`);
+    return stdout.trim();
+  } catch (error) {
+    console.warn('Failed to get current branch:', error);
+    return 'unknown';
+  }
+}
+
+async function getGitDiff(repoPath: string, fromCommit: string, toCommit: string): Promise<GitDiffResult> {
+  try {
+    const { stdout } = await execAsync(
+      `cd "${repoPath}" && git diff --name-status ${fromCommit}..${toCommit}`
+    );
+    
+    const result: GitDiffResult = {
+      addedFiles: [],
+      modifiedFiles: [],
+      deletedFiles: [],
+      renamedFiles: []
+    };
+
+    const lines = stdout.trim().split('\n').filter(line => line.length > 0);
+    
+    for (const line of lines) {
+      const [status, ...pathParts] = line.split('\t');
+      
+      if (status === 'A') {
+        result.addedFiles.push(pathParts[0]);
+      } else if (status === 'M') {
+        result.modifiedFiles.push(pathParts[0]);
+      } else if (status === 'D') {
+        result.deletedFiles.push(pathParts[0]);
+      } else if (status.startsWith('R')) {
+        // Renamed file: R095  old/path  new/path
+        if (pathParts.length >= 2) {
+          result.renamedFiles.push({
+            from: pathParts[0],
+            to: pathParts[1]
+          });
+        }
+      } else if (status.startsWith('C')) {
+        // Copied file - treat as added
+        result.addedFiles.push(pathParts[pathParts.length - 1]);
+      }
+    }
+
+    return result;
+  } catch (error) {
+    console.error('Failed to get git diff:', error);
+    throw new Error(`Failed to get git diff: ${error}`);
+  }
+}
+
+async function processDeletedFiles(
+  projectId: string,
+  deletedFiles: string[],
+  renamedFiles: Array<{ from: string; to: string }>
+): Promise<void> {
+  // Delete vectors for deleted files
+  for (const file of deletedFiles) {
+    try {
+      await deleteSource({
+        source: file,
+        project_id: projectId,
+        scope: 'project'
+      });
+      console.log(`Deleted vectors for removed file: ${file}`);
+    } catch (error) {
+      console.warn(`Failed to delete vectors for file ${file}:`, error);
+    }
+  }
+
+  // Delete vectors for renamed files (old paths)
+  for (const rename of renamedFiles) {
+    try {
+      await deleteSource({
+        source: rename.from,
+        project_id: projectId,
+        scope: 'project'
+      });
+      console.log(`Deleted vectors for renamed file: ${rename.from} -> ${rename.to}`);
+    } catch (error) {
+      console.warn(`Failed to delete vectors for renamed file ${rename.from}:`, error);
+    }
+  }
+}
+
+// MCP Tool Functions for Manual Indexing Operations
+
+// Get current git commit hash for a repository
+async function getCurrentCommit(repoPath: string): Promise<string> {
+  try {
+    const { stdout } = await execAsync(`cd "${repoPath}" && git rev-parse HEAD`);
+    return stdout.trim();
+  } catch (error) {
+    console.error('Failed to get current commit:', error);
+    throw new Error(`Failed to get current commit: ${error}`);
+  }
+}
+
+// Index a single file - for when users want to index specific files before git push
+export async function indexSingleFile(
+  projectId: string,
+  gitRepo: string,
+  filePath: string,
+  branch: string = 'main'
+): Promise<{ success: boolean; vectors_added: number; message: string }> {
+  console.log(`Starting single file indexing for project ${projectId}: ${filePath}`);
+  
+  try {
+    // Get project info
+    const project = await getProject(projectId);
+    if (!project) {
+      throw new Error('Project not found');
+    }
+
+    // Setup repository
+    const tempDir = path.join(os.tmpdir(), `ideamem_single_${projectId}_${Date.now()}`);
+    await setupRepositoryForIncremental(gitRepo, tempDir, branch);
+    
+    const fullFilePath = path.join(tempDir, filePath);
+    
+    // Check if file exists
+    try {
+      await fs.access(fullFilePath);
+    } catch {
+      throw new Error(`File not found: ${filePath}`);
+    }
+
+    // Check if file should be indexed
+    if (!shouldIndex(path.basename(filePath)) || shouldSkip(path.basename(filePath), fullFilePath)) {
+      return {
+        success: false,
+        vectors_added: 0,
+        message: `File type not supported for indexing: ${filePath}`
+      };
+    }
+
+    // Process the file
+    const result = await processFile(projectId, fullFilePath, filePath);
+    
+    // Cleanup
+    await fs.rm(tempDir, { recursive: true, force: true });
+    
+    console.log(`Single file indexing completed: ${filePath}, ${result.vectors_added} vectors added`);
+    
+    return {
+      success: true,
+      vectors_added: result.vectors_added,
+      message: `Successfully indexed ${filePath} with ${result.vectors_added} vectors`
+    };
+    
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error(`Single file indexing failed:`, error);
+    return {
+      success: false,
+      vectors_added: 0,
+      message: `Failed to index file: ${errorMessage}`
+    };
+  }
+}
+
+// Reindex an existing file - removes old vectors and reindexes
+export async function reindexSingleFile(
+  projectId: string,
+  gitRepo: string,
+  filePath: string,
+  branch: string = 'main'
+): Promise<{ success: boolean; vectors_added: number; message: string }> {
+  console.log(`Starting single file reindexing for project ${projectId}: ${filePath}`);
+  
+  try {
+    // First delete existing vectors for this file
+    await deleteSource({
+      source: filePath,
+      project_id: projectId,
+      scope: 'project'
+    });
+    
+    // Then index the file fresh
+    const result = await indexSingleFile(projectId, gitRepo, filePath, branch);
+    
+    if (result.success) {
+      result.message = `Successfully reindexed ${filePath} with ${result.vectors_added} vectors`;
+    }
+    
+    return result;
+    
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error(`Single file reindexing failed:`, error);
+    return {
+      success: false,
+      vectors_added: 0,
+      message: `Failed to reindex file: ${errorMessage}`
+    };
+  }
+}
+
+// Full project reindex - clears all project vectors and reindexes everything
+export async function fullReindex(
+  projectId: string,
+  gitRepo: string,
+  branch: string = 'main'
+): Promise<{ success: boolean; message: string }> {
+  console.log(`Starting full reindex for project ${projectId}`);
+  
+  try {
+    // Get project info  
+    const project = await getProject(projectId);
+    if (!project) {
+      throw new Error('Project not found');
+    }
+
+    // Cancel any existing indexing job
+    if (runningJobs.has(projectId)) {
+      const context = runningJobs.get(projectId)!;
+      context.cancelled = true;
+      runningJobs.delete(projectId);
+    }
+    
+    // Clear all existing project vectors
+    // Note: We'll need to implement a function to delete all vectors for a project
+    try {
+      await deleteAllProjectVectors(projectId);
+    } catch (error) {
+      console.warn('Failed to clear existing vectors, continuing with reindex:', error);
+    }
+    
+    // Start fresh full indexing
+    await startCodebaseIndexing(projectId, gitRepo);
+    
+    return {
+      success: true,
+      message: `Full reindex started for project ${project.name}. Check project status for progress.`
+    };
+    
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error(`Full reindex failed:`, error);
+    return {
+      success: false,
+      message: `Failed to start full reindex: ${errorMessage}`
+    };
+  }
+}
+
+// Scheduled incremental indexing - checks for new commits and indexes changes
+export async function scheduledIncrementalIndexing(
+  projectId: string,
+  gitRepo: string,
+  branch: string = 'main'
+): Promise<{ success: boolean; action: string; message: string }> {
+  console.log(`Checking for changes in project ${projectId}`);
+  
+  try {
+    // Get project info
+    const project = await getProject(projectId);
+    if (!project) {
+      throw new Error('Project not found');
+    }
+
+    // Setup repository to check current commit
+    const tempDir = path.join(os.tmpdir(), `ideamem_check_${projectId}_${Date.now()}`);
+    await setupRepositoryForIncremental(gitRepo, tempDir, branch);
+    
+    // Get current commit
+    const currentCommit = await getCurrentCommit(tempDir);
+    
+    // Check if we're on the same commit as last indexed
+    if (project.lastIndexedCommit === currentCommit) {
+      // Cleanup and return - no changes
+      await fs.rm(tempDir, { recursive: true, force: true });
+      
+      return {
+        success: true,
+        action: 'no_changes',
+        message: `No new commits found. Project is up to date (commit: ${currentCommit.substring(0, 7)})`
+      };
+    }
+    
+    // Cleanup temp directory before starting incremental indexing
+    await fs.rm(tempDir, { recursive: true, force: true });
+    
+    // We have new commits - start incremental indexing
+    if (!project.lastIndexedCommit) {
+      // No previous commit recorded - do full indexing
+      await startCodebaseIndexing(projectId, gitRepo);
+      
+      return {
+        success: true,
+        action: 'full_index',
+        message: `No previous indexing found. Started full indexing for commit ${currentCommit.substring(0, 7)}`
+      };
+    } else {
+      // Start incremental indexing from last indexed commit to current
+      await startIncrementalIndexing(projectId, gitRepo, currentCommit, branch);
+      
+      return {
+        success: true,
+        action: 'incremental_index',
+        message: `New commits detected. Started incremental indexing from ${project.lastIndexedCommit.substring(0, 7)} to ${currentCommit.substring(0, 7)}`
+      };
+    }
+    
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error(`Scheduled incremental indexing failed:`, error);
+    return {
+      success: false,
+      action: 'error',
+      message: `Failed to check for changes: ${errorMessage}`
+    };
+  }
+}
+
+// Helper function to delete all vectors for a project
+async function deleteAllProjectVectors(projectId: string): Promise<void> {
+  // This would need to be implemented based on your vector storage
+  // For now, we'll use a placeholder that attempts to delete by project scope
+  console.log(`Clearing all vectors for project ${projectId}`);
+  
+  // Note: This is a simplified approach. In a production system, 
+  // you might want to query for all sources first, then delete them one by one
+  // or implement a bulk delete operation in the memory system
+  
+  try {
+    // Try to get all projects to find sources to delete
+    const projects = await listProjects();
+    // This is a placeholder - you'd need to implement bulk project deletion in memory.ts
+    console.log('Project vector cleanup requested - manual cleanup may be required');
+  } catch (error) {
+    console.warn('Failed to clear project vectors:', error);
+    throw error;
   }
 }

@@ -17,7 +17,7 @@ export async function GET() {
     }
 
     // Filter to only return running jobs
-    const runningJobs = {};
+    const runningJobs: Record<string, any> = {};
     for (const [projectId, job] of Object.entries(allJobs)) {
       if (job && typeof job === 'object' && 'status' in job) {
         if (job.status === 'running') {

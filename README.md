@@ -23,6 +23,7 @@ A professional Model Context Protocol (MCP) server for semantic memory operation
 - **Local LLM** - Ollama with `nomic-embed-text` model for embeddings
 - **Project Management** - Multi-tenant isolation with comprehensive metrics
 - **Real-time Updates** - Live indexing progress and status synchronization
+- **Webhook Integration** - Automatic re-indexing on Git push events from GitHub, GitLab, and Bitbucket
 
 ## 📋 Table of Contents
 
@@ -381,6 +382,80 @@ List all available project identifiers.
 }
 ```
 
+##### `tools/call` - indexing.index_file
+Index a single file in a project repository before git push operations.
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "params": {
+    "name": "indexing.index_file",
+    "arguments": {
+      "project_id": "my-project",
+      "file_path": "src/components/Button.tsx",
+      "branch": "main"
+    }
+  },
+  "id": 7
+}
+```
+
+##### `tools/call` - indexing.reindex_file
+Reindex an existing file, removing old vectors and creating new ones.
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "params": {
+    "name": "indexing.reindex_file",
+    "arguments": {
+      "project_id": "my-project",
+      "file_path": "src/utils/helpers.js",
+      "branch": "main"
+    }
+  },
+  "id": 8
+}
+```
+
+##### `tools/call` - indexing.full_reindex
+Perform a complete reindex of an entire project repository.
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "params": {
+    "name": "indexing.full_reindex",
+    "arguments": {
+      "project_id": "my-project",
+      "branch": "main"
+    }
+  },
+  "id": 9
+}
+```
+
+##### `tools/call` - indexing.check_and_index
+Check for new git commits and perform incremental indexing if changes are found.
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "params": {
+    "name": "indexing.check_and_index",
+    "arguments": {
+      "project_id": "my-project",
+      "branch": "main"
+    }
+  },
+  "id": 10
+}
+```
+
 ### Web API Endpoints
 
 #### Projects
@@ -391,6 +466,8 @@ List all available project identifiers.
 - `POST /api/projects/[id]/token` - Regenerate token
 - `POST /api/projects/[id]/index` - Start indexing
 - `DELETE /api/projects/[id]/index` - Stop indexing
+- `GET /api/projects/[id]/webhook` - Get webhook configuration
+- `POST /api/projects/[id]/webhook` - Enable/disable webhook
 
 #### Admin
 - `GET/POST /api/admin/config` - Service configuration
@@ -399,6 +476,9 @@ List all available project identifiers.
 
 #### Indexing
 - `GET /api/projects/indexing/status` - Get active indexing jobs
+
+#### Webhooks
+- `POST /api/webhooks/[projectId]` - Receive Git platform webhooks for automatic re-indexing
 
 ## 🖥️ Web Interface
 
@@ -415,6 +495,7 @@ List all available project identifiers.
 - **Query Metrics** - Visual statistics showing usage patterns
 - **Indexing Control** - Start, stop, monitor background indexing
 - **File Statistics** - Detailed counts of indexed files and vectors
+- **Webhook Management** - Configure automatic re-indexing on Git push events
 
 ### Admin Panel (`/admin`)
 - **Service Configuration** - Qdrant and Ollama connection settings

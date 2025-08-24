@@ -21,6 +21,15 @@ export interface Project {
   lastQueryAt?: string;
   queriesThisWeek?: number;
   queriesThisMonth?: number;
+  // Webhook information
+  webhookEnabled?: boolean;
+  lastWebhookAt?: string;
+  lastWebhookCommit?: string;
+  lastWebhookBranch?: string;
+  lastWebhookAuthor?: string;
+  // Git tracking
+  lastIndexedCommit?: string;
+  lastIndexedBranch?: string;
 }
 
 export interface IndexingJob {
@@ -270,6 +279,17 @@ export async function cancelIndexingJob(projectId: string): Promise<boolean> {
   });
   
   return true;
+}
+
+// Enable/disable webhook for a project
+export async function toggleWebhook(projectId: string, enabled: boolean): Promise<Project | null> {
+  return await updateProject(projectId, { webhookEnabled: enabled });
+}
+
+// Get webhook URL for a project
+export function getWebhookUrl(projectId: string, baseUrl?: string): string {
+  const base = baseUrl || 'http://localhost:3000';
+  return `${base}/api/webhooks/${projectId}`;
 }
 
 // Track a query for metrics

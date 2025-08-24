@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { ingest, retrieve, deleteSource, listProjects } from '@/lib/memory';
 import { trackQuery, getProjectByToken } from '@/lib/projects';
+import { indexSingleFile, reindexSingleFile, fullReindex, scheduledIncrementalIndexing } from '@/lib/indexing';
 
 // Define ToolSchema objects for our custom methods
 const INGEST_TOOL_SCHEMA = {
@@ -108,11 +109,99 @@ const LIST_PROJECTS_TOOL_SCHEMA = {
   }
 };
 
+const INDEX_FILE_TOOL_SCHEMA = {
+  name: "indexing.index_file",
+  description: "Index a single file in a project repository. Useful for indexing specific files before git push operations or when you want to immediately make a file searchable. The file will be fetched from the repository and processed with semantic chunking.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      project_id: { 
+        type: "string", 
+        description: "Project identifier where the file should be indexed" 
+      },
+      file_path: { 
+        type: "string", 
+        description: "Relative path to the file within the repository (e.g., 'src/components/Button.tsx', 'README.md')" 
+      },
+      branch: { 
+        type: "string", 
+        description: "Git branch to index from (default: 'main')" 
+      }
+    },
+    required: ["project_id", "file_path"]
+  }
+};
+
+const REINDEX_FILE_TOOL_SCHEMA = {
+  name: "indexing.reindex_file",
+  description: "Reindex an existing file in a project repository. This removes the old vectors for the file and creates new ones with the current content. Useful when you know a file has been updated and you want to refresh its semantic representation immediately.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      project_id: { 
+        type: "string", 
+        description: "Project identifier where the file should be reindexed" 
+      },
+      file_path: { 
+        type: "string", 
+        description: "Relative path to the file within the repository (e.g., 'src/components/Button.tsx', 'README.md')" 
+      },
+      branch: { 
+        type: "string", 
+        description: "Git branch to reindex from (default: 'main')" 
+      }
+    },
+    required: ["project_id", "file_path"]
+  }
+};
+
+const FULL_REINDEX_TOOL_SCHEMA = {
+  name: "indexing.full_reindex",
+  description: "Perform a complete reindex of an entire project repository. This clears all existing vectors for the project and reindexes everything from scratch. Use this when you need to rebuild the entire semantic index, such as after major repository changes or configuration updates.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      project_id: { 
+        type: "string", 
+        description: "Project identifier to fully reindex" 
+      },
+      branch: { 
+        type: "string", 
+        description: "Git branch to reindex from (default: 'main')" 
+      }
+    },
+    required: ["project_id"]
+  }
+};
+
+const SCHEDULED_INDEXING_TOOL_SCHEMA = {
+  name: "indexing.check_and_index",
+  description: "Check for new git commits and perform incremental indexing if changes are found. This is ideal for scheduled operations when webhooks are not available. If the project is on the same commit as last indexed, no action is taken. If new commits are found, only changed files are processed for efficiency.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      project_id: { 
+        type: "string", 
+        description: "Project identifier to check and index" 
+      },
+      branch: { 
+        type: "string", 
+        description: "Git branch to check for changes (default: 'main')" 
+      }
+    },
+    required: ["project_id"]
+  }
+};
+
 const ALL_TOOLS = [
   INGEST_TOOL_SCHEMA,
   RETRIEVE_TOOL_SCHEMA,
   DELETE_SOURCE_TOOL_SCHEMA,
-  LIST_PROJECTS_TOOL_SCHEMA
+  LIST_PROJECTS_TOOL_SCHEMA,
+  INDEX_FILE_TOOL_SCHEMA,
+  REINDEX_FILE_TOOL_SCHEMA,
+  FULL_REINDEX_TOOL_SCHEMA,
+  SCHEDULED_INDEXING_TOOL_SCHEMA
 ];
 
 export async function POST(request: Request) {
@@ -125,10 +214,11 @@ export async function POST(request: Request) {
     const authHeader = request.headers.get('Authorization');
     const projectIdHeader = request.headers.get('X-Project-ID');
     let projectId: string | null = null;
+    let project: any = null;
     
     if (authHeader?.startsWith('Bearer ')) {
       const token = authHeader.substring(7);
-      const project = await getProjectByToken(token);
+      project = await getProjectByToken(token);
       if (project) {
         projectId = project.id;
       }
@@ -244,6 +334,44 @@ export async function POST(request: Request) {
               break;
             case 'memory.list_projects':
               result = await listProjects();
+              break;
+            case 'indexing.index_file':
+              if (!toolArgs) throw new Error('Missing arguments for indexing.index_file');
+              if (!projectId || !project) throw new Error('Project authentication required for indexing operations');
+              result = await indexSingleFile(
+                projectId,
+                project.gitRepo,
+                toolArgs.file_path,
+                toolArgs.branch || 'main'
+              );
+              break;
+            case 'indexing.reindex_file':
+              if (!toolArgs) throw new Error('Missing arguments for indexing.reindex_file');
+              if (!projectId || !project) throw new Error('Project authentication required for indexing operations');
+              result = await reindexSingleFile(
+                projectId,
+                project.gitRepo,
+                toolArgs.file_path,
+                toolArgs.branch || 'main'
+              );
+              break;
+            case 'indexing.full_reindex':
+              if (!toolArgs) throw new Error('Missing arguments for indexing.full_reindex');
+              if (!projectId || !project) throw new Error('Project authentication required for indexing operations');
+              result = await fullReindex(
+                projectId,
+                project.gitRepo,
+                toolArgs.branch || 'main'
+              );
+              break;
+            case 'indexing.check_and_index':
+              if (!toolArgs) throw new Error('Missing arguments for indexing.check_and_index');
+              if (!projectId || !project) throw new Error('Project authentication required for indexing operations');
+              result = await scheduledIncrementalIndexing(
+                projectId,
+                project.gitRepo,
+                toolArgs.branch || 'main'
+              );
               break;
             default:
               return NextResponse.json({

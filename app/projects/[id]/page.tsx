@@ -22,7 +22,9 @@ import {
   CodeBracketIcon,
   ServerIcon,
   MagnifyingGlassIcon,
-  ChartBarIcon
+  ChartBarIcon,
+  BoltIcon,
+  GlobeAltIcon
 } from '@heroicons/react/24/outline';
 import { twMerge } from 'tailwind-merge';
 import Link from 'next/link';
@@ -46,6 +48,12 @@ interface Project {
   lastQueryAt?: string;
   queriesThisWeek?: number;
   queriesThisMonth?: number;
+  // Webhook information
+  webhookEnabled?: boolean;
+  lastWebhookAt?: string;
+  lastWebhookCommit?: string;
+  lastWebhookBranch?: string;
+  lastWebhookAuthor?: string;
 }
 
 interface IndexingJob {
@@ -75,10 +83,25 @@ export default function ProjectDetailPage() {
   const [showTokenModal, setShowTokenModal] = useState(false);
   const [showConnectionModal, setShowConnectionModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showWebhookModal, setShowWebhookModal] = useState(false);
   const [selectedClient, setSelectedClient] = useState<'claude-code' | 'gemini'>('claude-code');
+  
+  // Webhook state
+  const [webhookInfo, setWebhookInfo] = useState<{
+    webhookUrl: string;
+    webhookEnabled: boolean;
+    lastWebhookAt?: string;
+    lastWebhookCommit?: string;
+    lastWebhookBranch?: string;
+    lastWebhookAuthor?: string;
+  }>({
+    webhookUrl: '',
+    webhookEnabled: false
+  });
 
   useEffect(() => {
     loadProject();
+    loadWebhookInfo();
     // Poll for indexing updates every 2 seconds
     const interval = setInterval(loadIndexingJob, 2000);
     return () => clearInterval(interval);
@@ -176,6 +199,35 @@ export default function ProjectDetailPage() {
       }
     } catch (error) {
       console.error('Failed to delete project:', error);
+    }
+  };
+
+  const loadWebhookInfo = async () => {
+    try {
+      const response = await fetch(`/api/projects/${projectId}/webhook`);
+      if (response.ok) {
+        const data = await response.json();
+        setWebhookInfo(data);
+      }
+    } catch (error) {
+      console.error('Failed to load webhook info:', error);
+    }
+  };
+
+  const toggleWebhook = async () => {
+    try {
+      const response = await fetch(`/api/projects/${projectId}/webhook`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: !webhookInfo.webhookEnabled })
+      });
+
+      if (response.ok) {
+        await loadWebhookInfo();
+        await loadProject(); // Refresh project to get latest webhook info
+      }
+    } catch (error) {
+      console.error('Failed to toggle webhook:', error);
     }
   };
 
@@ -339,6 +391,21 @@ export default function ProjectDetailPage() {
                       </div>
                     </div>
                   )}
+
+                  {project.lastWebhookAt && (
+                    <div>
+                      <label className="label">Last Webhook</label>
+                      <div className="flex items-center text-gray-900">
+                        <BoltIcon className="h-4 w-4 mr-2" />
+                        {formatDate(project.lastWebhookAt)}
+                      </div>
+                      {project.lastWebhookCommit && (
+                        <p className="text-sm text-gray-600 ml-6">
+                          Commit {project.lastWebhookCommit} by {project.lastWebhookAuthor} on {project.lastWebhookBranch}
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -491,6 +558,32 @@ export default function ProjectDetailPage() {
               >
                 <LinkIcon className="h-4 w-4" />
                 Connection Setup
+              </button>
+            </div>
+
+            {/* Webhook Management */}
+            <div className="card">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Auto Re-indexing</h3>
+              <p className="text-gray-600 text-sm mb-4">
+                Automatically re-index when code changes are pushed to your repository.
+              </p>
+              
+              <div className="flex items-center justify-between mb-4">
+                <span className="text-sm font-medium">Webhook Status</span>
+                <span className={twMerge(
+                  "text-sm font-medium",
+                  webhookInfo.webhookEnabled ? "text-green-600" : "text-gray-500"
+                )}>
+                  {webhookInfo.webhookEnabled ? "Enabled" : "Disabled"}
+                </span>
+              </div>
+              
+              <button
+                onClick={() => setShowWebhookModal(true)}
+                className="btn bg-orange-100 text-orange-700 hover:bg-orange-200 w-full flex items-center justify-center gap-2"
+              >
+                <BoltIcon className="h-4 w-4" />
+                Webhook Setup
               </button>
             </div>
 
@@ -680,6 +773,154 @@ export default function ProjectDetailPage() {
                 className="btn btn-danger flex-1"
               >
                 Delete Project
+              </button>
+            </div>
+          </Dialog.Panel>
+        </div>
+      </Dialog>
+
+      {/* Webhook Setup Modal */}
+      <Dialog open={showWebhookModal} onClose={() => setShowWebhookModal(false)}>
+        <div className="fixed inset-0 bg-black/30" aria-hidden="true" />
+        <div className="fixed inset-0 flex items-center justify-center p-4">
+          <Dialog.Panel className="bg-white rounded-xl shadow-xl max-w-2xl w-full p-6">
+            <Dialog.Title className="text-xl font-semibold text-gray-900 mb-4">
+              Webhook Auto Re-indexing Setup
+            </Dialog.Title>
+            
+            <p className="text-gray-600 mb-6">
+              Configure your Git hosting platform to automatically re-index "{project?.name}" when code changes are pushed.
+            </p>
+            
+            {/* Webhook Status Toggle */}
+            <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-medium text-gray-900">Webhook Status</h3>
+                  <p className="text-sm text-gray-600">Enable or disable automatic re-indexing</p>
+                </div>
+                <button
+                  onClick={toggleWebhook}
+                  className={twMerge(
+                    "relative inline-flex h-6 w-11 items-center rounded-full transition-colors",
+                    webhookInfo.webhookEnabled ? "bg-green-600" : "bg-gray-200"
+                  )}
+                >
+                  <span
+                    className={twMerge(
+                      "inline-block h-4 w-4 transform rounded-full bg-white transition-transform",
+                      webhookInfo.webhookEnabled ? "translate-x-6" : "translate-x-1"
+                    )}
+                  />
+                </button>
+              </div>
+              
+              <div className="flex items-center text-sm">
+                <div className={twMerge(
+                  "flex items-center gap-2",
+                  webhookInfo.webhookEnabled ? "text-green-600" : "text-gray-500"
+                )}>
+                  <BoltIcon className="h-4 w-4" />
+                  {webhookInfo.webhookEnabled ? "Webhook Enabled" : "Webhook Disabled"}
+                </div>
+              </div>
+            </div>
+
+            {/* Webhook URL */}
+            <div className="mb-6">
+              <label className="label">Webhook URL</label>
+              <p className="text-sm text-gray-600 mb-2">
+                Add this URL to your Git hosting platform's webhook settings:
+              </p>
+              <div className="bg-gray-50 rounded-lg p-4 mb-2">
+                <code className="text-sm font-mono text-gray-900 break-all">
+                  {webhookInfo.webhookUrl}
+                </code>
+              </div>
+              <button
+                onClick={() => navigator.clipboard.writeText(webhookInfo.webhookUrl)}
+                className="btn btn-secondary flex items-center gap-2"
+              >
+                <ClipboardDocumentIcon className="h-4 w-4" />
+                Copy Webhook URL
+              </button>
+            </div>
+
+            {/* Setup Instructions */}
+            <div className="mb-6">
+              <h3 className="text-lg font-medium text-gray-900 mb-3">Setup Instructions</h3>
+              
+              <div className="space-y-4">
+                {/* GitHub Instructions */}
+                <div className="border border-gray-200 rounded-lg p-4">
+                  <h4 className="font-medium text-gray-900 mb-2 flex items-center gap-2">
+                    <GlobeAltIcon className="h-4 w-4" />
+                    GitHub
+                  </h4>
+                  <ol className="text-sm text-gray-600 space-y-1 ml-6 list-decimal">
+                    <li>Go to your repository → Settings → Webhooks</li>
+                    <li>Click "Add webhook"</li>
+                    <li>Paste the webhook URL above</li>
+                    <li>Set Content type to "application/json"</li>
+                    <li>Select "Just the push event"</li>
+                    <li>Click "Add webhook"</li>
+                  </ol>
+                </div>
+
+                {/* GitLab Instructions */}
+                <div className="border border-gray-200 rounded-lg p-4">
+                  <h4 className="font-medium text-gray-900 mb-2 flex items-center gap-2">
+                    <GlobeAltIcon className="h-4 w-4" />
+                    GitLab
+                  </h4>
+                  <ol className="text-sm text-gray-600 space-y-1 ml-6 list-decimal">
+                    <li>Go to your project → Settings → Webhooks</li>
+                    <li>Paste the webhook URL above</li>
+                    <li>Select "Push events" trigger</li>
+                    <li>Click "Add webhook"</li>
+                  </ol>
+                </div>
+
+                {/* Bitbucket Instructions */}
+                <div className="border border-gray-200 rounded-lg p-4">
+                  <h4 className="font-medium text-gray-900 mb-2 flex items-center gap-2">
+                    <GlobeAltIcon className="h-4 w-4" />
+                    Bitbucket
+                  </h4>
+                  <ol className="text-sm text-gray-600 space-y-1 ml-6 list-decimal">
+                    <li>Go to your repository → Settings → Webhooks</li>
+                    <li>Click "Add webhook"</li>
+                    <li>Paste the webhook URL above</li>
+                    <li>Select "Repository push" trigger</li>
+                    <li>Click "Save"</li>
+                  </ol>
+                </div>
+              </div>
+            </div>
+
+            {/* Last Webhook Info */}
+            {project?.lastWebhookAt && (
+              <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <h3 className="text-lg font-medium text-blue-900 mb-2">Last Webhook Activity</h3>
+                <div className="text-sm text-blue-700 space-y-1">
+                  <p><strong>Time:</strong> {formatDate(project.lastWebhookAt)}</p>
+                  {project.lastWebhookCommit && (
+                    <>
+                      <p><strong>Commit:</strong> {project.lastWebhookCommit}</p>
+                      <p><strong>Branch:</strong> {project.lastWebhookBranch}</p>
+                      <p><strong>Author:</strong> {project.lastWebhookAuthor}</p>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowWebhookModal(false)}
+                className="btn btn-primary flex-1"
+              >
+                Close
               </button>
             </div>
           </Dialog.Panel>
