@@ -195,7 +195,7 @@ const SCHEDULED_INDEXING_TOOL_SCHEMA = {
 
 const CHECK_CONSTRAINTS_TOOL_SCHEMA = {
   name: "codebase.check_constraints",
-  description: "🚨 AI ASSISTANT: ALWAYS USE FIRST before coding! Automatically searches for rules and user preferences that must be followed. CRITICAL WORKFLOW: Run this before writing any code to ensure compliance with coding standards, style guides, architecture constraints, and user preferences. Returns all relevant rules and preferences for the current project.",
+  description: "🚨 AI ASSISTANT: ALWAYS USE FIRST before coding! Automatically searches for rules and user preferences that must be followed. CRITICAL WORKFLOW: Run this before writing any code to ensure compliance with coding standards, style guides, architecture constraints, and user preferences. Returns all relevant rules and preferences with PROJECT RULES TAKING PRECEDENCE over global rules.",
   inputSchema: {
     type: "object",
     properties: {
@@ -399,30 +399,54 @@ export async function POST(request: Request) {
               );
               break;
             case 'codebase.check_constraints':
-              // Smart constraint checking - prioritizes rules and user_preferences
+              // Smart constraint checking with PROJECT PRIORITY - project rules override global ones
               const constraintQuery = toolArgs?.coding_task 
                 ? `${toolArgs.coding_task} coding standards rules preferences constraints`
                 : 'coding standards style guide architecture constraints user preferences';
               
-              const rulesResults = await retrieve({
+              // Get project rules/preferences first (highest priority)
+              const projectRules = toolArgs?.project_id ? await retrieve({
                 query: constraintQuery,
-                project_id: toolArgs?.project_id,
-                scope: toolArgs?.scope || 'all',
+                project_id: toolArgs.project_id,
+                scope: 'project',
                 filters: { type: 'rule' }
-              });
+              }) : [];
               
-              const preferencesResults = await retrieve({
+              const projectPreferences = toolArgs?.project_id ? await retrieve({
                 query: constraintQuery,
-                project_id: toolArgs?.project_id,
-                scope: toolArgs?.scope || 'all',
+                project_id: toolArgs.project_id,
+                scope: 'project',
                 filters: { type: 'user_preference' }
-              });
+              }) : [];
+              
+              // Get global rules/preferences (lower priority)
+              const globalRules = (toolArgs?.scope === 'all' || toolArgs?.scope === 'global') ? await retrieve({
+                query: constraintQuery,
+                scope: 'global',
+                filters: { type: 'rule' }
+              }) : [];
+              
+              const globalPreferences = (toolArgs?.scope === 'all' || toolArgs?.scope === 'global') ? await retrieve({
+                query: constraintQuery,
+                scope: 'global',
+                filters: { type: 'user_preference' }
+              }) : [];
+              
+              // Merge with project taking precedence (project rules come first)
+              const allRules = [...projectRules, ...globalRules];
+              const allPreferences = [...projectPreferences, ...globalPreferences];
               
               result = {
-                rules: rulesResults,
-                preferences: preferencesResults,
-                summary: `Found ${rulesResults.length} rules and ${preferencesResults.length} user preferences. ALWAYS follow these constraints when coding.`,
-                workflow_reminder: "🚨 CRITICAL: Review these constraints before writing any code. They take precedence over default coding practices."
+                rules: allRules,
+                preferences: allPreferences,
+                priority_info: {
+                  project_rules_count: projectRules.length,
+                  global_rules_count: globalRules.length,
+                  project_preferences_count: projectPreferences.length,
+                  global_preferences_count: globalPreferences.length
+                },
+                summary: `Found ${allRules.length} rules (${projectRules.length} project-specific, ${globalRules.length} global) and ${allPreferences.length} preferences (${projectPreferences.length} project-specific, ${globalPreferences.length} global). PROJECT RULES OVERRIDE GLOBAL RULES.`,
+                workflow_reminder: "🚨 CRITICAL: Project-specific constraints take precedence over global ones. Review project rules first, then global rules as fallback."
               };
               break;
             default:
