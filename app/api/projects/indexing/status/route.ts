@@ -1,29 +1,32 @@
 import { NextResponse } from 'next/server';
-import { getIndexingStatus } from '@/lib/indexing';
-import { promises as fs } from 'fs';
-import path from 'path';
+import { prisma, initializeDatabase } from '@/lib/database';
 
 export async function GET() {
   try {
-    // Load current jobs from file
-    const jobsFile = path.join(process.cwd(), 'data', 'indexing-jobs.json');
-    let allJobs = {};
+    await initializeDatabase();
     
-    try {
-      const data = await fs.readFile(jobsFile, 'utf-8');
-      allJobs = JSON.parse(data);
-    } catch {
-      // File doesn't exist or is invalid, return empty jobs
-    }
-
-    // Filter to only return running jobs
-    const runningJobs: Record<string, any> = {};
-    for (const [projectId, job] of Object.entries(allJobs)) {
-      if (job && typeof job === 'object' && 'status' in job) {
-        if (job.status === 'running') {
-          runningJobs[projectId] = job;
-        }
+    // Get all active (running) indexing jobs
+    const activeJobs = await prisma.indexingJob.findMany({
+      where: {
+        status: { in: ['PENDING', 'RUNNING'] }
       }
+    });
+
+    // Convert to the format expected by the frontend
+    const runningJobs: Record<string, any> = {};
+    for (const job of activeJobs) {
+      runningJobs[job.projectId] = {
+        projectId: job.projectId,
+        status: job.status,
+        progress: job.progress,
+        currentFile: job.currentFile,
+        totalFiles: job.totalFiles,
+        processedFiles: job.processedFiles,
+        vectorCount: job.vectorsAdded,
+        startTime: job.startedAt?.toISOString(),
+        endTime: job.completedAt?.toISOString(),
+        error: job.errorMessage
+      };
     }
 
     return NextResponse.json({ jobs: runningJobs });

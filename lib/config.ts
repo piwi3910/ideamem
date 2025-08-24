@@ -1,53 +1,68 @@
-import { promises as fs } from 'fs';
-import path from 'path';
+import { prisma, initializeDatabase } from './database';
 
 export interface AppConfig {
   qdrantUrl: string;
   ollamaUrl: string;
 }
 
-const configFilePath = path.join(process.cwd(), 'config.json');
-
 const defaultConfig: AppConfig = {
   qdrantUrl: 'http://localhost:6333',
   ollamaUrl: 'http://localhost:11434',
 };
 
-// Type guard to check if the loaded config matches the interface
-function isAppConfig(object: any): object is AppConfig {
-  return (
-    object &&
-    typeof object.qdrantUrl === 'string' &&
-    typeof object.ollamaUrl === 'string'
-  );
-}
-
 export async function getConfig(): Promise<AppConfig> {
   try {
-    await fs.access(configFilePath);
-    const fileContent = await fs.readFile(configFilePath, 'utf-8');
-    const config = JSON.parse(fileContent);
+    await initializeDatabase();
+    
+    const config = await prisma.config.findUnique({
+      where: { id: 'default' }
+    });
 
-    if (isAppConfig(config)) {
-      return config;
+    if (config) {
+      return {
+        qdrantUrl: config.qdrantUrl,
+        ollamaUrl: config.ollamaUrl,
+      };
     } else {
-      // If file is malformed, overwrite with default and return it
-      await saveConfig(defaultConfig);
-      return defaultConfig;
+      // Create default config if it doesn't exist
+      const newConfig = await prisma.config.create({
+        data: {
+          id: 'default',
+          qdrantUrl: defaultConfig.qdrantUrl,
+          ollamaUrl: defaultConfig.ollamaUrl,
+        }
+      });
+      
+      return {
+        qdrantUrl: newConfig.qdrantUrl,
+        ollamaUrl: newConfig.ollamaUrl,
+      };
     }
   } catch (error) {
-    // If file doesn't exist, create it with default config
-    await saveConfig(defaultConfig);
+    console.error('Failed to get config from database:', error);
+    // Fallback to default config
     return defaultConfig;
   }
 }
 
 export async function saveConfig(config: AppConfig): Promise<void> {
   try {
-    const data = JSON.stringify(config, null, 2);
-    await fs.writeFile(configFilePath, data, 'utf-8');
+    await initializeDatabase();
+    
+    await prisma.config.upsert({
+      where: { id: 'default' },
+      update: {
+        qdrantUrl: config.qdrantUrl,
+        ollamaUrl: config.ollamaUrl,
+      },
+      create: {
+        id: 'default',
+        qdrantUrl: config.qdrantUrl,
+        ollamaUrl: config.ollamaUrl,
+      }
+    });
   } catch (error) {
-    console.error('Failed to save config:', error);
-    throw new Error('Could not save configuration file.');
+    console.error('Failed to save config to database:', error);
+    throw new Error('Could not save configuration to database.');
   }
 }

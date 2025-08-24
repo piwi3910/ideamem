@@ -1,0 +1,117 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Application configuration (replaces config.json)
+model Config {
+  id        String   @id @default("default")
+  qdrantUrl String   @default("http://localhost:6333")
+  ollamaUrl String   @default("http://localhost:11434")
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  @@map("config")
+}
+
+// Projects (replaces data/projects.json)
+model Project {
+  id                           String    @id @default(uuid())
+  name                         String    @unique
+  description                  String?
+  gitRepo                      String
+  token                        String    @unique
+  createdAt                    DateTime  @default(now())
+  updatedAt                    DateTime  @updatedAt
+  
+  // Indexing status
+  indexStatus                  IndexStatus @default(IDLE)
+  indexProgress                Int         @default(0)
+  indexedAt                    DateTime?
+  fileCount                    Int         @default(0)
+  vectorCount                  Int         @default(0)
+  lastIndexedCommit            String?
+  lastIndexedBranch            String?
+  
+  // Webhook configuration
+  webhookEnabled               Boolean     @default(false)
+  lastWebhookAt                DateTime?
+  lastWebhookCommit            String?
+  lastWebhookBranch            String?
+  lastWebhookAuthor            String?
+  
+  // Scheduled indexing configuration
+  scheduledIndexingEnabled     Boolean     @default(false)
+  scheduledIndexingBranch      String      @default("main")
+  scheduledIndexingInterval    Int         @default(60) // minutes
+  scheduledIndexingNextRun     DateTime?
+  scheduledIndexingLastRun     DateTime?
+  
+  // Usage statistics
+  totalQueries                 Int         @default(0)
+  lastQueryAt                  DateTime?
+  queriesThisWeek              Int         @default(0)
+  queriesThisMonth             Int         @default(0)
+  
+  // Relations
+  indexingJobs                 IndexingJob[]
+  
+  @@map("projects")
+}
+
+// Indexing jobs (replaces data/indexing-jobs.json)
+model IndexingJob {
+  id               String      @id @default(uuid())
+  projectId        String
+  status           JobStatus   @default(PENDING)
+  progress         Int         @default(0)
+  currentFile      String?
+  totalFiles       Int         @default(0)
+  processedFiles   Int         @default(0)
+  errorCount       Int         @default(0)
+  vectorsAdded     Int         @default(0)
+  startedAt        DateTime    @default(now())
+  completedAt      DateTime?
+  errorMessage     String?
+  
+  // Job configuration
+  branch           String      @default("main")
+  fullReindex      Boolean     @default(false)
+  triggeredBy      TriggerType @default(MANUAL)
+  
+  // Relations
+  project          Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  @@map("indexing_jobs")
+}
+
+// Enums
+enum IndexStatus {
+  IDLE
+  INDEXING
+  COMPLETED
+  ERROR
+}
+
+enum JobStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum TriggerType {
+  MANUAL
+  WEBHOOK
+  SCHEDULED
+  API
+}

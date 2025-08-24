@@ -38,7 +38,7 @@ interface Project {
   createdAt: string;
   updatedAt: string;
   indexedAt?: string;
-  indexStatus: 'pending' | 'indexing' | 'completed' | 'failed' | 'cancelled';
+  indexStatus: 'IDLE' | 'INDEXING' | 'COMPLETED' | 'ERROR';
   indexProgress?: number;
   fileCount?: number;
   vectorCount?: number;
@@ -64,7 +64,7 @@ interface Project {
 
 interface IndexingJob {
   projectId: string;
-  status: 'running' | 'cancelled' | 'completed' | 'failed';
+  status: 'PENDING' | 'RUNNING' | 'CANCELLED' | 'COMPLETED' | 'FAILED';
   progress: number;
   currentFile?: string;
   totalFiles: number;
@@ -296,14 +296,12 @@ export default function ProjectDetailPage() {
 
   const getStatusIcon = (status: Project['indexStatus']) => {
     switch (status) {
-      case 'completed':
+      case 'COMPLETED':
         return <CheckCircleIcon className="h-6 w-6 text-green-500" />;
-      case 'failed':
+      case 'ERROR':
         return <ExclamationCircleIcon className="h-6 w-6 text-red-500" />;
-      case 'indexing':
+      case 'INDEXING':
         return <ArrowPathIcon className="h-6 w-6 text-blue-500 animate-spin" />;
-      case 'cancelled':
-        return <XMarkIcon className="h-6 w-6 text-gray-500" />;
       default:
         return <ClockIcon className="h-6 w-6 text-gray-400" />;
     }
@@ -311,11 +309,10 @@ export default function ProjectDetailPage() {
 
   const getStatusText = (status: Project['indexStatus']) => {
     switch (status) {
-      case 'completed': return 'Indexed';
-      case 'failed': return 'Failed';
-      case 'indexing': return 'Indexing';
-      case 'cancelled': return 'Cancelled';
-      default: return 'Pending';
+      case 'COMPLETED': return 'Indexed';
+      case 'ERROR': return 'Failed';
+      case 'INDEXING': return 'Indexing';
+      default: return 'Idle';
     }
   };
 
@@ -524,16 +521,16 @@ export default function ProjectDetailPage() {
                 {getStatusIcon(project.indexStatus)}
                 <span className={twMerge(
                   "ml-3 text-lg font-medium",
-                  project.indexStatus === 'completed' && 'text-green-600',
-                  project.indexStatus === 'failed' && 'text-red-600',
-                  project.indexStatus === 'indexing' && 'text-blue-600',
-                  (project.indexStatus === 'pending' || project.indexStatus === 'cancelled') && 'text-gray-500'
+                  project.indexStatus === 'COMPLETED' && 'text-green-600',
+                  project.indexStatus === 'ERROR' && 'text-red-600',
+                  project.indexStatus === 'INDEXING' && 'text-blue-600',
+                  (project.indexStatus === 'IDLE') && 'text-gray-500'
                 )}>
                   {getStatusText(project.indexStatus)}
                 </span>
               </div>
 
-              {project.indexStatus === 'indexing' && indexingJob && (
+              {project.indexStatus === 'INDEXING' && indexingJob && (
                 <div className="mb-4">
                   <div className="w-full bg-gray-200 rounded-full h-3 mb-2">
                     <div 
@@ -547,7 +544,7 @@ export default function ProjectDetailPage() {
                 </div>
               )}
 
-              {project.indexStatus === 'completed' && (
+              {project.indexStatus === 'COMPLETED' && (
                 <div className="grid grid-cols-2 gap-4 mb-4">
                   <div className="text-center p-4 bg-blue-50 rounded-lg">
                     <CodeBracketIcon className="h-8 w-8 text-blue-600 mx-auto mb-2" />
@@ -562,7 +559,7 @@ export default function ProjectDetailPage() {
                 </div>
               )}
 
-              {project.indexStatus === 'failed' && project.lastError && (
+              {project.indexStatus === 'ERROR' && project.lastError && (
                 <div className="p-4 bg-red-50 border border-red-200 rounded-lg mb-4">
                   <p className="text-red-700">{project.lastError}</p>
                 </div>
@@ -570,7 +567,7 @@ export default function ProjectDetailPage() {
 
               {/* Indexing Actions */}
               <div className="flex gap-3">
-                {project.indexStatus === 'indexing' ? (
+                {project.indexStatus === 'INDEXING' ? (
                   <button
                     onClick={stopIndexing}
                     className="btn bg-red-100 text-red-700 hover:bg-red-200 flex items-center gap-2"
@@ -584,7 +581,7 @@ export default function ProjectDetailPage() {
                     className="btn bg-green-100 text-green-700 hover:bg-green-200 flex items-center gap-2"
                   >
                     <PlayIcon className="h-4 w-4" />
-                    {project.indexStatus === 'completed' ? 'Reindex' : 'Start Indexing'}
+                    {project.indexStatus === 'COMPLETED' ? 'Reindex' : 'Start Indexing'}
                   </button>
                 )}
               </div>
@@ -756,7 +753,7 @@ export default function ProjectDetailPage() {
             <div className="card">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Stats</h3>
               <div className="space-y-3">
-                {project.indexStatus === 'completed' && (
+                {project.indexStatus === 'COMPLETED' && (
                   <>
                     <div className="flex justify-between">
                       <span className="text-gray-600">Files</span>

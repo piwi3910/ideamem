@@ -4,7 +4,7 @@ import os from 'os';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { ingest } from './memory';
-import { updateIndexingProgress, IndexingJob, updateProject, getProject } from './projects';
+import { updateIndexingProgress, IndexingJob, updateProject, getProject, startIndexingJob } from './projects';
 import { deleteSource, listProjects, deleteAllProjectVectors } from './memory';
 
 const execAsync = promisify(exec);
@@ -29,6 +29,7 @@ const SKIP_PATTERNS = new Set([
 
 interface IndexingContext {
   projectId: string;
+  jobId: string;
   repoPath: string;
   cancelled: boolean;
   totalFiles: number;
@@ -54,9 +55,17 @@ export async function startIncrementalIndexing(
     throw new Error('Indexing already in progress for this project');
   }
 
+  // Create indexing job in database
+  const job = await startIndexingJob(projectId, {
+    branch: targetBranch,
+    fullReindex: false,
+    triggeredBy: 'WEBHOOK'
+  });
+
   const tempDir = path.join(process.cwd(), 'tmp', 'repos', projectId);
   const context: IndexingContext = {
     projectId,
+    jobId: job.id,
     repoPath: tempDir,
     cancelled: false,
     totalFiles: 0,
@@ -69,15 +78,15 @@ export async function startIncrementalIndexing(
     await performIncrementalIndexing(context, gitRepo, targetCommit, targetBranch);
   } catch (error) {
     console.error('Incremental indexing failed:', error);
-    await updateIndexingProgress(projectId, {
-      status: 'failed',
-      error: error instanceof Error ? error.message : 'Unknown error'
+    await updateIndexingProgress(context.jobId, {
+      status: 'FAILED',
+      errorMessage: error instanceof Error ? error.message : 'Unknown error'
     });
   } finally {
     runningJobs.delete(projectId);
     // Cleanup temp directory
     try {
-      await fs.rmdir(tempDir, { recursive: true });
+      await fs.rm(tempDir, { recursive: true, force: true });
     } catch (error) {
       console.warn('Failed to cleanup temp directory:', error);
     }
@@ -89,9 +98,17 @@ export async function startCodebaseIndexing(projectId: string, gitRepo: string):
     throw new Error('Indexing already in progress for this project');
   }
 
+  // Create indexing job in database
+  const job = await startIndexingJob(projectId, {
+    branch: 'main',
+    fullReindex: true,
+    triggeredBy: 'MANUAL'
+  });
+
   const tempDir = path.join(process.cwd(), 'tmp', 'repos', projectId);
   const context: IndexingContext = {
     projectId,
+    jobId: job.id,
     repoPath: tempDir,
     cancelled: false,
     totalFiles: 0,
@@ -105,15 +122,15 @@ export async function startCodebaseIndexing(projectId: string, gitRepo: string):
     await performIndexing(context, gitRepo);
   } catch (error) {
     console.error('Indexing failed:', error);
-    await updateIndexingProgress(projectId, {
-      status: 'failed',
-      error: error instanceof Error ? error.message : 'Unknown error'
+    await updateIndexingProgress(context.jobId, {
+      status: 'FAILED',
+      errorMessage: error instanceof Error ? error.message : 'Unknown error'
     });
   } finally {
     runningJobs.delete(projectId);
     // Cleanup temp directory
     try {
-      await fs.rmdir(tempDir, { recursive: true });
+      await fs.rm(tempDir, { recursive: true, force: true });
     } catch (error) {
       console.warn('Failed to cleanup temp directory:', error);
     }
@@ -128,36 +145,35 @@ export function cancelIndexing(projectId: string): boolean {
   return true;
 }
 
-export function getIndexingStatus(projectId: string): IndexingJob | null {
+export function getIndexingStatus(projectId: string): any | null {
   const context = runningJobs.get(projectId);
   if (!context) return null;
 
   return {
     projectId,
-    status: 'running',
+    status: 'RUNNING',
     progress: context.totalFiles > 0 ? Math.round((context.processedFiles / context.totalFiles) * 100) : 0,
     totalFiles: context.totalFiles,
-    processedFiles: context.processedFiles,
-    startTime: new Date().toISOString() // This should be stored properly
+    processedFiles: context.processedFiles
   };
 }
 
 async function performIndexing(context: IndexingContext, gitRepo: string): Promise<void> {
   // Step 1: Clone repository
-  await updateIndexingProgress(context.projectId, {
+  await updateIndexingProgress(context.jobId, {
     progress: 5,
-    status: 'running'
+    status: 'RUNNING'
   });
 
   await cloneRepository(gitRepo, context.repoPath);
 
   if (context.cancelled) {
-    await updateIndexingProgress(context.projectId, { status: 'cancelled' });
+    await updateIndexingProgress(context.jobId, { status: 'CANCELLED' });
     return;
   }
 
   // Step 2: Scan files
-  await updateIndexingProgress(context.projectId, {
+  await updateIndexingProgress(context.jobId, {
     progress: 10,
     currentFile: 'Scanning files...'
   });
@@ -165,14 +181,14 @@ async function performIndexing(context: IndexingContext, gitRepo: string): Promi
   const files = await scanFiles(context.repoPath);
   context.totalFiles = files.length;
 
-  await updateIndexingProgress(context.projectId, {
+  await updateIndexingProgress(context.jobId, {
     progress: 15,
     totalFiles: files.length,
     processedFiles: 0
   });
 
   if (context.cancelled) {
-    await updateIndexingProgress(context.projectId, { status: 'cancelled' });
+    await updateIndexingProgress(context.jobId, { status: 'CANCELLED' });
     return;
   }
 
@@ -181,14 +197,14 @@ async function performIndexing(context: IndexingContext, gitRepo: string): Promi
   
   for (let i = 0; i < files.length; i++) {
     if (context.cancelled) {
-      await updateIndexingProgress(context.projectId, { status: 'cancelled' });
+      await updateIndexingProgress(context.jobId, { status: 'CANCELLED' });
       return;
     }
 
     const file = files[i];
     const relativePath = path.relative(context.repoPath, file);
     
-    await updateIndexingProgress(context.projectId, {
+    await updateIndexingProgress(context.jobId, {
       currentFile: relativePath,
       processedFiles: i,
       progress: 15 + Math.round((i / files.length) * 80)
@@ -208,19 +224,30 @@ async function performIndexing(context: IndexingContext, gitRepo: string): Promi
   const currentCommit = await getCurrentCommitHash(context.repoPath);
   const currentBranch = await getCurrentBranch(context.repoPath);
   
-  await updateIndexingProgress(context.projectId, {
+  await updateIndexingProgress(context.jobId, {
     progress: 100,
-    status: 'completed',
+    status: 'COMPLETED',
     processedFiles: files.length,
-    vectorCount: vectorCount
+    vectorsAdded: vectorCount
   });
 
-  // Update project with commit tracking
+  // Update project with commit tracking and statistics
   await updateProject(context.projectId, {
     lastIndexedCommit: currentCommit,
-    lastIndexedBranch: currentBranch
+    lastIndexedBranch: currentBranch,
+    fileCount: files.length,
+    vectorCount: vectorCount,
+    indexedAt: new Date()
   });
 
+  // Mark indexing job as completed
+  await updateIndexingProgress(context.jobId, {
+    status: 'COMPLETED',
+    progress: 100,
+    processedFiles: files.length,
+    vectorsAdded: vectorCount
+  });
+  
   console.log(`Indexing completed: ${files.length} files, ${vectorCount} vectors, commit: ${currentCommit}`);
 }
 
@@ -230,7 +257,7 @@ async function cloneRepository(gitRepo: string, targetPath: string): Promise<voi
 
   // Remove existing directory if it exists
   try {
-    await fs.rmdir(targetPath, { recursive: true });
+    await fs.rm(targetPath, { recursive: true, force: true });
   } catch {
     // Directory doesn't exist, that's fine
   }
@@ -415,16 +442,16 @@ async function performIncrementalIndexing(
   targetBranch: string
 ): Promise<void> {
   // Step 1: Setup repository
-  await updateIndexingProgress(context.projectId, {
+  await updateIndexingProgress(context.jobId, {
     progress: 5,
-    status: 'running',
+    status: 'RUNNING',
     currentFile: 'Setting up repository...'
   });
 
   await setupRepositoryForIncremental(gitRepo, context.repoPath, targetBranch);
 
   if (context.cancelled) {
-    await updateIndexingProgress(context.projectId, { status: 'cancelled' });
+    await updateIndexingProgress(context.jobId, { status: 'CANCELLED' });
     return;
   }
 
@@ -440,7 +467,7 @@ async function performIncrementalIndexing(
   if (!project.lastIndexedCommit) {
     // First time indexing - do full index
     console.log('First time indexing - processing all files');
-    await updateIndexingProgress(context.projectId, {
+    await updateIndexingProgress(context.jobId, {
       progress: 10,
       currentFile: 'First time indexing - scanning all files...'
     });
@@ -448,7 +475,7 @@ async function performIncrementalIndexing(
   } else {
     // Incremental indexing - get diff
     console.log(`Incremental indexing from ${project.lastIndexedCommit} to ${targetCommit}`);
-    await updateIndexingProgress(context.projectId, {
+    await updateIndexingProgress(context.jobId, {
       progress: 10,
       currentFile: 'Analyzing changes...'
     });
@@ -473,28 +500,28 @@ async function performIncrementalIndexing(
 
   context.totalFiles = filesToProcess.length;
   
-  await updateIndexingProgress(context.projectId, {
+  await updateIndexingProgress(context.jobId, {
     progress: 15,
     totalFiles: filesToProcess.length,
     processedFiles: 0
   });
 
   if (context.cancelled) {
-    await updateIndexingProgress(context.projectId, { status: 'cancelled' });
+    await updateIndexingProgress(context.jobId, { status: 'CANCELLED' });
     return;
   }
 
   // Step 3: Process changed files
   for (let i = 0; i < filesToProcess.length; i++) {
     if (context.cancelled) {
-      await updateIndexingProgress(context.projectId, { status: 'cancelled' });
+      await updateIndexingProgress(context.jobId, { status: 'CANCELLED' });
       return;
     }
 
     const file = filesToProcess[i];
     const relativePath = path.relative(context.repoPath, file);
     
-    await updateIndexingProgress(context.projectId, {
+    await updateIndexingProgress(context.jobId, {
       currentFile: relativePath,
       processedFiles: i,
       progress: 15 + Math.round((i / filesToProcess.length) * 80)
@@ -520,19 +547,37 @@ async function performIncrementalIndexing(
   }
 
   // Step 4: Complete incremental indexing
-  await updateIndexingProgress(context.projectId, {
+  await updateIndexingProgress(context.jobId, {
     progress: 100,
-    status: 'completed',
+    status: 'COMPLETED',
     processedFiles: filesToProcess.length,
-    vectorCount: vectorCount
+    vectorsAdded: vectorCount
   });
 
-  // Update project with new commit tracking
+  // Get current project to calculate new totals
+  const currentProject = await getProject(context.projectId);
+  const newVectorCount = (currentProject?.vectorCount || 0) + vectorCount;
+  
+  // For incremental indexing, we need to get the total file count from the repo
+  const allFiles = await scanFiles(context.repoPath);
+  
+  // Update project with new commit tracking and updated statistics
   await updateProject(context.projectId, {
     lastIndexedCommit: targetCommit,
-    lastIndexedBranch: targetBranch
+    lastIndexedBranch: targetBranch,
+    fileCount: allFiles.length,
+    vectorCount: newVectorCount,
+    indexedAt: new Date()
   });
 
+  // Mark indexing job as completed
+  await updateIndexingProgress(context.jobId, {
+    status: 'COMPLETED',
+    progress: 100,
+    processedFiles: filesToProcess.length,
+    vectorsAdded: vectorCount
+  });
+  
   console.log(`Incremental indexing completed: ${filesToProcess.length} files processed, ${vectorCount} vectors added/updated`);
 }
 

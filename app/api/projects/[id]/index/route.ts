@@ -17,7 +17,7 @@ export async function POST(
       );
     }
 
-    if (project.indexStatus === 'indexing') {
+    if (project.indexStatus === 'INDEXING') {
       return NextResponse.json(
         { error: 'Indexing already in progress' },
         { status: 409 }

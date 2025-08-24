@@ -7,11 +7,16 @@
     "lib": "lib"
   },
   "scripts": {
+    "preinstall": "npx only-allow pnpm",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "db:migrate": "prisma migrate dev",
+    "db:generate": "prisma generate",
+    "db:studio": "prisma studio",
+    "migrate-json": "npx tsx lib/migrate-json-to-db.ts"
   },
   "repository": {
     "type": "git",
@@ -30,9 +35,11 @@
     "@babel/traverse": "^7.28.3",
     "@headlessui/react": "^2.2.7",
     "@heroicons/react": "^2.2.0",
+    "@prisma/client": "^6.14.0",
     "@qdrant/js-client-rest": "^1.15.1",
     "clsx": "^2.1.1",
     "next": "^15.5.0",
+    "prisma": "^6.14.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "tailwind-merge": "^3.3.1",
@@ -44,6 +51,7 @@
     "@types/react": "^19.1.11",
     "@types/uuid": "^10.0.0",
     "autoprefixer": "^10.4.21",
+    "only-allow": "^1.2.1",
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.0",
     "typescript": "^5.9.2"

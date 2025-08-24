@@ -131,19 +131,55 @@ export async function ingest(params: IngestParams): Promise<{ success: boolean; 
 interface RetrieveParams {
   query: string;
   filters?: Record<string, any>;
+  project_id?: string;
+  scope?: 'global' | 'project' | 'all';
 }
 
 export async function retrieve(params: RetrieveParams): Promise<any[]> {
   await ensureCollectionExists(); // Ensure collection exists before proceeding
-  const { query, filters } = params;
+  const { query, filters, project_id, scope } = params;
   const qdrant = await getQdrantClient();
 
   const query_vector = await getEmbedding(query);
 
+  // Build filter conditions
+  const filterConditions: any[] = [];
+  
+  // Add custom filters
+  if (filters) {
+    filterConditions.push(...Object.entries(filters).map(([key, value]) => ({ key, match: { value } })));
+  }
+  
+  // Add project and scope filtering
+  if (scope === 'global') {
+    filterConditions.push({ key: 'project_id', match: { value: 'global' } });
+  } else if (scope === 'project' && project_id) {
+    filterConditions.push({ key: 'project_id', match: { value: project_id } });
+  } else if (scope === 'all') {
+    // Search both global and project-specific content - use 'should' at top level
+    if (project_id) {
+      // For 'all' scope with project_id, create an OR condition at the top level
+      const searchResult = await qdrant.search(COLLECTION_NAME, {
+        vector: query_vector,
+        limit: 5,
+        filter: {
+          must: filters ? Object.entries(filters).map(([key, value]) => ({ key, match: { value } })) : [],
+          should: [
+            { key: 'project_id', match: { value: 'global' } },
+            { key: 'project_id', match: { value: project_id } }
+          ]
+        },
+      });
+      return searchResult;
+    } else {
+      filterConditions.push({ key: 'project_id', match: { value: 'global' } });
+    }
+  }
+  
   const searchResult = await qdrant.search(COLLECTION_NAME, {
     vector: query_vector,
     limit: 5,
-    filter: filters ? { must: Object.entries(filters).map(([key, value]) => ({ key, match: { value } })) } : undefined,
+    filter: filterConditions.length > 0 ? { must: filterConditions } : undefined,
   });
 
   return searchResult;

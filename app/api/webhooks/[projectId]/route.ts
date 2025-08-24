@@ -40,7 +40,7 @@ export async function POST(
     }
 
     // Check if already indexing
-    if (project.indexStatus === 'indexing') {
+    if (project.indexStatus === 'INDEXING') {
       return NextResponse.json({
         message: 'Indexing already in progress',
         projectId: project.id
@@ -49,7 +49,7 @@ export async function POST(
 
     // Update project with webhook information
     await updateProject(projectId, {
-      lastWebhookAt: new Date().toISOString(),
+      lastWebhookAt: new Date(),
       lastWebhookCommit: webhookInfo.commit,
       lastWebhookBranch: webhookInfo.branch,
       lastWebhookAuthor: webhookInfo.author

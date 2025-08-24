@@ -20,7 +20,7 @@ export async function GET(
       scheduledIndexingEnabled: project.scheduledIndexingEnabled || false,
       scheduledIndexingInterval: project.scheduledIndexingInterval || 60,
       scheduledIndexingBranch: project.scheduledIndexingBranch || 'main',
-      lastScheduledIndexingAt: project.lastScheduledIndexingAt,
+      lastScheduledIndexingAt: project.scheduledIndexingLastRun,
       scheduledIndexingNextRun: project.scheduledIndexingNextRun
     });
     
@@ -61,9 +61,11 @@ export async function POST(
 
     const updatedProject = await configureScheduledIndexing(
       id,
-      enabled,
-      intervalMinutes,
-      branch
+      {
+        enabled,
+        interval: intervalMinutes,
+        branch
+      }
     );
 
     if (!updatedProject) {

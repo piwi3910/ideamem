@@ -25,7 +25,7 @@ interface Project {
   createdAt: string;
   updatedAt: string;
   indexedAt?: string;
-  indexStatus: 'pending' | 'indexing' | 'completed' | 'failed' | 'cancelled';
+  indexStatus: 'IDLE' | 'INDEXING' | 'COMPLETED' | 'ERROR';
   indexProgress?: number;
   fileCount?: number;
   vectorCount?: number;
@@ -45,7 +45,7 @@ interface Project {
 
 interface IndexingJob {
   projectId: string;
-  status: 'running' | 'cancelled' | 'completed' | 'failed';
+  status: 'PENDING' | 'RUNNING' | 'CANCELLED' | 'COMPLETED' | 'FAILED';
   progress: number;
   currentFile?: string;
   totalFiles: number;
@@ -207,8 +207,8 @@ export default function DashboardPage() {
 
   const getActualStatus = (project: Project) => {
     // If project thinks it's indexing but there's no active job, it must be completed
-    if (project.indexStatus === 'indexing' && !indexingJobs[project.id]) {
-      return 'completed';
+    if (project.indexStatus === 'INDEXING' && !indexingJobs[project.id]) {
+      return 'COMPLETED';
     }
     return project.indexStatus;
   };
@@ -216,14 +216,12 @@ export default function DashboardPage() {
   const getStatusIcon = (project: Project) => {
     const actualStatus = getActualStatus(project);
     switch (actualStatus) {
-      case 'completed':
+      case 'COMPLETED':
         return <CheckCircleIcon className="h-5 w-5 text-green-500" />;
-      case 'failed':
+      case 'ERROR':
         return <ExclamationCircleIcon className="h-5 w-5 text-red-500" />;
-      case 'indexing':
+      case 'INDEXING':
         return <ArrowPathIcon className="h-5 w-5 text-blue-500 animate-spin" />;
-      case 'cancelled':
-        return <XMarkIcon className="h-5 w-5 text-gray-500" />;
       default:
         return <ClockIcon className="h-5 w-5 text-gray-400" />;
     }
@@ -232,11 +230,10 @@ export default function DashboardPage() {
   const getStatusText = (project: Project) => {
     const actualStatus = getActualStatus(project);
     switch (actualStatus) {
-      case 'completed': return 'Indexed';
-      case 'failed': return 'Failed';
-      case 'indexing': return 'Indexing';
-      case 'cancelled': return 'Cancelled';
-      default: return 'Pending';
+      case 'COMPLETED': return 'Indexed';
+      case 'ERROR': return 'Failed';
+      case 'INDEXING': return 'Indexing';
+      default: return 'Idle';
     }
   };
 
@@ -327,16 +324,16 @@ export default function DashboardPage() {
                       <span className="text-sm text-gray-500">Status</span>
                       <span className={twMerge(
                         "text-sm font-medium",
-                        getActualStatus(project) === 'completed' && 'text-green-600',
-                        getActualStatus(project) === 'failed' && 'text-red-600',
-                        getActualStatus(project) === 'indexing' && 'text-blue-600',
-                        (getActualStatus(project) === 'pending' || getActualStatus(project) === 'cancelled') && 'text-gray-500'
+                        getActualStatus(project) === 'COMPLETED' && 'text-green-600',
+                        getActualStatus(project) === 'ERROR' && 'text-red-600',
+                        getActualStatus(project) === 'INDEXING' && 'text-blue-600',
+                        (getActualStatus(project) === 'IDLE') && 'text-gray-500'
                       )}>
                         {getStatusText(project)}
                       </span>
                     </div>
                     
-                    {getActualStatus(project) === 'indexing' && job && (
+                    {getActualStatus(project) === 'INDEXING' && job && (
                       <div>
                         <div className="w-full bg-gray-200 rounded-full h-2 mb-2">
                           <div 
@@ -350,21 +347,21 @@ export default function DashboardPage() {
                       </div>
                     )}
 
-                    {getActualStatus(project) === 'completed' && (
+                    {getActualStatus(project) === 'COMPLETED' && (
                       <div className="flex justify-between text-sm text-gray-600">
                         <span>Files: {project.fileCount || 0}</span>
                         <span>Vectors: {project.vectorCount || 0}</span>
                       </div>
                     )}
 
-                    {getActualStatus(project) === 'failed' && project.lastError && (
+                    {getActualStatus(project) === 'ERROR' && project.lastError && (
                       <p className="text-sm text-red-600 mt-1">{project.lastError}</p>
                     )}
                   </div>
 
                   {/* Actions */}
                   <div className="flex flex-wrap gap-2 pt-4 border-t border-gray-200">
-                    {getActualStatus(project) === 'indexing' ? (
+                    {getActualStatus(project) === 'INDEXING' ? (
                       <button
                         onClick={() => stopIndexing(project.id)}
                         className="btn bg-red-100 text-red-700 hover:bg-red-200 flex-1 flex items-center justify-center gap-1"
@@ -378,7 +375,7 @@ export default function DashboardPage() {
                         className="btn bg-green-100 text-green-700 hover:bg-green-200 flex-1 flex items-center justify-center gap-1"
                       >
                         <PlayIcon className="h-4 w-4" />
-                        {getActualStatus(project) === 'completed' ? 'Reindex' : 'Index'}
+                        {getActualStatus(project) === 'COMPLETED' ? 'Reindex' : 'Index'}
                       </button>
                     )}
                     
