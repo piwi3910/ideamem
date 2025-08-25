@@ -25,9 +25,13 @@ import {
   ChartBarIcon,
   BoltIcon,
   GlobeAltIcon,
+  ShieldCheckIcon,
+  CogIcon,
 } from '@heroicons/react/24/outline';
 import { twMerge } from 'tailwind-merge';
 import Link from 'next/link';
+import ProjectRulesManager from '@/components/ProjectRulesManager';
+import ProjectPreferencesManager from '@/components/ProjectPreferencesManager';
 
 interface Project {
   id: string;
@@ -90,6 +94,8 @@ export default function ProjectDetailPage() {
   const [showConnectionModal, setShowConnectionModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showWebhookModal, setShowWebhookModal] = useState(false);
+  const [showRulesModal, setShowRulesModal] = useState(false);
+  const [showPreferencesModal, setShowPreferencesModal] = useState(false);
   const [selectedClient, setSelectedClient] = useState<'claude-code' | 'gemini'>('claude-code');
 
   // Webhook state
@@ -775,6 +781,36 @@ export default function ProjectDetailPage() {
               </div>
             </div>
 
+            {/* Project Rules */}
+            <div className="card">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Project Rules</h3>
+              <p className="text-gray-600 text-sm mb-4">
+                Manage project-specific coding standards that override global rules.
+              </p>
+              <button
+                onClick={() => setShowRulesModal(true)}
+                className="btn bg-blue-100 text-blue-700 hover:bg-blue-200 w-full flex items-center justify-center gap-2"
+              >
+                <ShieldCheckIcon className="h-4 w-4" />
+                Manage Rules
+              </button>
+            </div>
+
+            {/* Project Preferences */}
+            <div className="card">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Project Preferences</h3>
+              <p className="text-gray-600 text-sm mb-4">
+                Customize project settings that override global preferences.
+              </p>
+              <button
+                onClick={() => setShowPreferencesModal(true)}
+                className="btn bg-purple-100 text-purple-700 hover:bg-purple-200 w-full flex items-center justify-center gap-2"
+              >
+                <CogIcon className="h-4 w-4" />
+                Manage Preferences
+              </button>
+            </div>
+
             {/* Quick Stats */}
             <div className="card">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Stats</h3>
@@ -1115,6 +1151,20 @@ export default function ProjectDetailPage() {
           </Dialog.Panel>
         </div>
       </Dialog>
+
+      {/* Project Rules Manager Modal */}
+      <ProjectRulesManager
+        projectId={project.id}
+        isOpen={showRulesModal}
+        onClose={() => setShowRulesModal(false)}
+      />
+
+      {/* Project Preferences Manager Modal */}
+      <ProjectPreferencesManager
+        projectId={project.id}
+        isOpen={showPreferencesModal}
+        onClose={() => setShowPreferencesModal(false)}
+      />
     </div>
   );
 }

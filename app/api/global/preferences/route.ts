@@ -1,18 +1,31 @@
 import { NextResponse } from 'next/server';
-import { ingest, retrieve, deleteSource } from '@/lib/memory';
+import { PrismaClient } from '@/lib/generated/prisma';
+
+const prisma = new PrismaClient();
 
 // GET - Fetch all global preferences
 export async function GET() {
   try {
-    const result = await retrieve({
-      query: 'global user preferences settings configuration',
-      filters: { type: 'user_preference', scope: 'global', project_id: 'global' },
-      scope: 'global',
+    const globalPreferences = await prisma.globalPreference.findMany({
+      orderBy: { updatedAt: 'desc' }
     });
+
+    // Transform to match the expected frontend format
+    const preferences = globalPreferences.map(preference => ({
+      id: preference.id,
+      payload: {
+        source: preference.source,
+        content: preference.content,
+        type: 'user_preference' as const,
+        language: 'markdown' as const,
+        scope: 'global' as const,
+        project_id: 'global'
+      }
+    }));
 
     return NextResponse.json({
       success: true,
-      preferences: result || [],
+      preferences,
     });
   } catch (error) {
     console.error('Error fetching global preferences:', error);
@@ -27,7 +40,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { source, content, type = 'user_preference', language = 'markdown' } = body;
+    const { source, content } = body;
 
     if (!source || !content) {
       return NextResponse.json(
@@ -36,27 +49,39 @@ export async function POST(request: Request) {
       );
     }
 
-    // Ingest the preference into global scope
-    const result = await ingest({
-      content,
-      source,
-      type: 'user_preference',
-      language,
-      project_id: 'global',
-      scope: 'global',
+    // Create the preference in the database
+    const preference = await prisma.globalPreference.create({
+      data: {
+        source,
+        content,
+      },
     });
 
     return NextResponse.json({
       success: true,
       message: 'Preference added successfully',
-      vectors_added: result.vectors_added,
+      preference: {
+        id: preference.id,
+        payload: {
+          source: preference.source,
+          content: preference.content,
+          type: 'user_preference' as const,
+          language: 'markdown' as const,
+          scope: 'global' as const,
+          project_id: 'global'
+        }
+      }
     });
   } catch (error) {
     console.error('Error adding global preference:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to add preference' },
-      { status: 500 }
-    );
+    // Handle unique constraint violation
+    if (error.code === 'P2002') {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'A preference with this source already exists' 
+      }, { status: 409 });
+    }
+    return NextResponse.json({ success: false, error: 'Failed to add preference' }, { status: 500 });
   }
 }
 
@@ -64,43 +89,45 @@ export async function POST(request: Request) {
 export async function PUT(request: Request) {
   try {
     const body = await request.json();
-    const { id, source, content } = body;
+    const { source, content } = body;
 
-    if (!id || !source || !content) {
+    if (!source || !content) {
       return NextResponse.json(
-        { success: false, error: 'ID, source, and content are required' },
+        { success: false, error: 'Source and content are required' },
         { status: 400 }
       );
     }
 
-    // Delete the old preference by source
-    await deleteSource({
-      source,
-      project_id: 'global',
-      scope: 'global',
-    });
-
-    // Add the updated preference
-    const result = await ingest({
-      content,
-      source,
-      type: 'user_preference',
-      language: 'markdown',
-      project_id: 'global',
-      scope: 'global',
+    // Update the preference by source
+    const preference = await prisma.globalPreference.update({
+      where: { source },
+      data: { content },
     });
 
     return NextResponse.json({
       success: true,
       message: 'Preference updated successfully',
-      vectors_added: result.vectors_added,
+      preference: {
+        id: preference.id,
+        payload: {
+          source: preference.source,
+          content: preference.content,
+          type: 'user_preference' as const,
+          language: 'markdown' as const,
+          scope: 'global' as const,
+          project_id: 'global'
+        }
+      }
     });
   } catch (error) {
     console.error('Error updating global preference:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to update preference' },
-      { status: 500 }
-    );
+    if (error.code === 'P2025') {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Preference not found' 
+      }, { status: 404 });
+    }
+    return NextResponse.json({ success: false, error: 'Failed to update preference' }, { status: 500 });
   }
 }
 
@@ -114,10 +141,9 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ success: false, error: 'Source is required' }, { status: 400 });
     }
 
-    await deleteSource({
-      source,
-      project_id: 'global',
-      scope: 'global',
+    // Delete the preference by source
+    await prisma.globalPreference.delete({
+      where: { source }
     });
 
     return NextResponse.json({
@@ -126,9 +152,12 @@ export async function DELETE(request: Request) {
     });
   } catch (error) {
     console.error('Error deleting global preference:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to delete preference' },
-      { status: 500 }
-    );
+    if (error.code === 'P2025') {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Preference not found' 
+      }, { status: 404 });
+    }
+    return NextResponse.json({ success: false, error: 'Failed to delete preference' }, { status: 500 });
   }
 }

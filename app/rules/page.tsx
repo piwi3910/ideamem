@@ -16,7 +16,6 @@ import { twMerge } from 'tailwind-merge';
 
 interface Rule {
   id: string;
-  version: number;
   score?: number;
   payload: {
     content: string;
@@ -338,7 +337,7 @@ export default function RulesPage() {
                       <div>
                         <h4 className="font-semibold text-gray-900">{rule.payload.source}</h4>
                         <p className="text-sm text-gray-500">
-                          Version {rule.version} • Global Scope
+                          Global Scope
                         </p>
                       </div>
                     </div>

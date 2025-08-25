@@ -17,7 +17,6 @@ import { twMerge } from 'tailwind-merge';
 
 interface Preference {
   id: string;
-  version: number;
   score?: number;
   payload: {
     content: string;
@@ -399,7 +398,7 @@ export default function PreferencesPage() {
                       <div>
                         <h4 className="font-semibold text-gray-900">{preference.payload.source}</h4>
                         <p className="text-sm text-gray-500">
-                          Version {preference.version} • Global Scope
+                          Global Scope
                         </p>
                       </div>
                     </div>

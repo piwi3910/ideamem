@@ -1,18 +1,31 @@
 import { NextResponse } from 'next/server';
-import { ingest, retrieve, deleteSource } from '@/lib/memory';
+import { PrismaClient } from '@/lib/generated/prisma';
+
+const prisma = new PrismaClient();
 
 // GET - Fetch all global rules
 export async function GET() {
   try {
-    const result = await retrieve({
-      query: 'global rules coding standards',
-      filters: { type: 'rule', scope: 'global', project_id: 'global' },
-      scope: 'global',
+    const globalRules = await prisma.globalRule.findMany({
+      orderBy: { updatedAt: 'desc' }
     });
+
+    // Transform to match the expected frontend format
+    const rules = globalRules.map(rule => ({
+      id: rule.id,
+      payload: {
+        source: rule.source,
+        content: rule.content,
+        type: 'rule' as const,
+        language: 'markdown' as const,
+        scope: 'global' as const,
+        project_id: 'global'
+      }
+    }));
 
     return NextResponse.json({
       success: true,
-      rules: result || [],
+      rules,
     });
   } catch (error) {
     console.error('Error fetching global rules:', error);
@@ -27,7 +40,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { source, content, type = 'rule', language = 'markdown' } = body;
+    const { source, content } = body;
 
     if (!source || !content) {
       return NextResponse.json(
@@ -36,23 +49,38 @@ export async function POST(request: Request) {
       );
     }
 
-    // Ingest the rule into global scope
-    const result = await ingest({
-      content,
-      source,
-      type: 'rule',
-      language,
-      project_id: 'global',
-      scope: 'global',
+    // Create the rule in the database
+    const rule = await prisma.globalRule.create({
+      data: {
+        source,
+        content,
+      },
     });
 
     return NextResponse.json({
       success: true,
       message: 'Rule added successfully',
-      vectors_added: result.vectors_added,
+      rule: {
+        id: rule.id,
+        payload: {
+          source: rule.source,
+          content: rule.content,
+          type: 'rule' as const,
+          language: 'markdown' as const,
+          scope: 'global' as const,
+          project_id: 'global'
+        }
+      }
     });
   } catch (error) {
     console.error('Error adding global rule:', error);
+    // Handle unique constraint violation
+    if (error.code === 'P2002') {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'A rule with this source already exists' 
+      }, { status: 409 });
+    }
     return NextResponse.json({ success: false, error: 'Failed to add rule' }, { status: 500 });
   }
 }
@@ -61,39 +89,44 @@ export async function POST(request: Request) {
 export async function PUT(request: Request) {
   try {
     const body = await request.json();
-    const { id, source, content } = body;
+    const { source, content } = body;
 
-    if (!id || !source || !content) {
+    if (!source || !content) {
       return NextResponse.json(
-        { success: false, error: 'ID, source, and content are required' },
+        { success: false, error: 'Source and content are required' },
         { status: 400 }
       );
     }
 
-    // Delete the old rule by source
-    await deleteSource({
-      source,
-      project_id: 'global',
-      scope: 'global',
-    });
-
-    // Add the updated rule
-    const result = await ingest({
-      content,
-      source,
-      type: 'rule',
-      language: 'markdown',
-      project_id: 'global',
-      scope: 'global',
+    // Update the rule by source
+    const rule = await prisma.globalRule.update({
+      where: { source },
+      data: { content },
     });
 
     return NextResponse.json({
       success: true,
       message: 'Rule updated successfully',
-      vectors_added: result.vectors_added,
+      rule: {
+        id: rule.id,
+        payload: {
+          source: rule.source,
+          content: rule.content,
+          type: 'rule' as const,
+          language: 'markdown' as const,
+          scope: 'global' as const,
+          project_id: 'global'
+        }
+      }
     });
   } catch (error) {
     console.error('Error updating global rule:', error);
+    if (error.code === 'P2025') {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Rule not found' 
+      }, { status: 404 });
+    }
     return NextResponse.json({ success: false, error: 'Failed to update rule' }, { status: 500 });
   }
 }
@@ -108,10 +141,9 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ success: false, error: 'Source is required' }, { status: 400 });
     }
 
-    await deleteSource({
-      source,
-      project_id: 'global',
-      scope: 'global',
+    // Delete the rule by source
+    await prisma.globalRule.delete({
+      where: { source }
     });
 
     return NextResponse.json({
@@ -120,6 +152,12 @@ export async function DELETE(request: Request) {
     });
   } catch (error) {
     console.error('Error deleting global rule:', error);
+    if (error.code === 'P2025') {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Rule not found' 
+      }, { status: 404 });
+    }
     return NextResponse.json({ success: false, error: 'Failed to delete rule' }, { status: 500 });
   }
 }
