@@ -424,6 +424,100 @@ export default function AdminPage() {
               </div>
             </div>
 
+            {/* Queue Management */}
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+              <div className="px-6 py-4 border-b border-gray-200">
+                <h3 className="text-lg font-medium text-gray-900">Queue Management (BullMQ)</h3>
+                <p className="text-sm text-gray-500 mt-1">
+                  Monitor and manage background job queues for indexing and scheduling
+                </p>
+              </div>
+              
+              <div className="p-6 space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Worker Controls */}
+                  <div className="space-y-3">
+                    <h4 className="font-medium text-gray-900">Workers</h4>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            const response = await fetch('/api/admin/workers', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ action: 'start' }),
+                            });
+                            const result = await response.json();
+                            alert(result.message);
+                          } catch (error) {
+                            alert('Failed to start workers');
+                          }
+                        }}
+                        className="px-3 py-1.5 text-sm bg-green-600 text-white rounded hover:bg-green-700"
+                      >
+                        Start Workers
+                      </button>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            const response = await fetch('/api/admin/workers', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ action: 'restart' }),
+                            });
+                            const result = await response.json();
+                            alert(result.message);
+                          } catch (error) {
+                            alert('Failed to restart workers');
+                          }
+                        }}
+                        className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
+                      >
+                        Restart Workers
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Queue Status */}
+                  <div className="space-y-3">
+                    <h4 className="font-medium text-gray-900">Queue Status</h4>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          const response = await fetch('/api/admin/queues');
+                          const result = await response.json();
+                          if (result.success) {
+                            console.log('Queue Stats:', result.queueStats);
+                            alert('Queue stats logged to console');
+                          }
+                        } catch (error) {
+                          alert('Failed to get queue stats');
+                        }
+                      }}
+                      className="px-3 py-1.5 text-sm bg-purple-600 text-white rounded hover:bg-purple-700"
+                    >
+                      Check Queue Status
+                    </button>
+                  </div>
+                </div>
+
+                <div className="bg-blue-50 rounded-lg p-4">
+                  <h4 className="font-medium text-gray-900 mb-2">Queue Dashboard</h4>
+                  <p className="text-sm text-gray-600 mb-3">
+                    Background jobs are now processed by BullMQ with Redis. Workers automatically start when needed.
+                  </p>
+                  <div className="text-xs text-gray-500">
+                    • Indexing jobs run in background with progress tracking<br/>
+                    • Scheduled indexing uses Redis-based cron jobs<br/>
+                    • Failed jobs are automatically retried with exponential backoff
+                  </div>
+                </div>
+              </div>
+            </div>
+
             {/* Save Button */}
             <div className="flex justify-end">
               <button type="submit" className="btn btn-primary">

@@ -36,6 +36,9 @@
   "dependencies": {
     "@babel/parser": "^7.28.3",
     "@babel/traverse": "^7.28.3",
+    "@bull-board/api": "^6.12.5",
+    "@bull-board/express": "^6.12.5",
+    "@bull-board/ui": "^6.12.5",
     "@headlessui/react": "^2.2.7",
     "@heroicons/react": "^2.2.0",
     "@prisma/client": "^6.14.0",
@@ -44,6 +47,7 @@
     "@types/react-dom": "^19.1.7",
     "@types/react-syntax-highlighter": "^15.5.13",
     "@types/redis": "^4.0.11",
+    "bullmq": "^5.58.1",
     "clsx": "^2.1.1",
     "d3": "^7.9.0",
     "js-yaml": "^4.1.0",

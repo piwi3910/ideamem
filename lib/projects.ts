@@ -139,7 +139,7 @@ export async function startIndexingJob(
   });
 
   // Create new job
-  return await prisma.indexingJob.create({
+  const job = await prisma.indexingJob.create({
     data: {
       projectId,
       branch: options.branch ?? 'main',
@@ -148,6 +148,28 @@ export async function startIndexingJob(
       status: 'PENDING',
     },
   });
+
+  // Queue the job in BullMQ
+  try {
+    const { QueueManager } = await import('./queue');
+    await QueueManager.addIndexingJob({
+      projectId,
+      jobId: job.id,
+      branch: options.branch ?? 'main',
+      fullReindex: options.fullReindex ?? false,
+      triggeredBy: options.triggeredBy ?? 'MANUAL',
+    });
+  } catch (error) {
+    console.error('Failed to queue indexing job:', error);
+    // Update job status to failed if queuing fails
+    await updateIndexingProgress(job.id, {
+      status: 'FAILED',
+      errorMessage: 'Failed to queue job: ' + (error instanceof Error ? error.message : 'Unknown error'),
+    });
+    throw error;
+  }
+
+  return job;
 }
 
 export async function updateIndexingProgress(
@@ -315,8 +337,30 @@ export async function configureScheduledIndexing(
     const nextRun = new Date();
     nextRun.setMinutes(nextRun.getMinutes() + (config.interval || 60));
     updateData.scheduledIndexingNextRun = nextRun;
+    
+    // Add to BullMQ scheduled queue
+    try {
+      const { QueueManager } = await import('./queue');
+      await QueueManager.addScheduledIndexingJob({
+        projectId,
+        branch: config.branch || 'main',
+        interval: config.interval || 60,
+      });
+    } catch (error) {
+      console.error('Failed to schedule indexing job:', error);
+      throw error;
+    }
   } else {
     updateData.scheduledIndexingNextRun = null;
+    
+    // Remove from BullMQ scheduled queue
+    try {
+      const { QueueManager } = await import('./queue');
+      await QueueManager.removeScheduledIndexingJob(projectId);
+    } catch (error) {
+      console.error('Failed to remove scheduled indexing job:', error);
+      // Don't throw error for removal as it's not critical
+    }
   }
 
   return await updateProject(projectId, updateData);
