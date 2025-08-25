@@ -7,12 +7,12 @@ export async function GET() {
     const result = await retrieve({
       query: 'global user preferences settings configuration',
       filters: { type: 'user_preference', scope: 'global', project_id: 'global' },
-      scope: 'global'
+      scope: 'global',
     });
 
     return NextResponse.json({
       success: true,
-      preferences: result || []
+      preferences: result || [],
     });
   } catch (error) {
     console.error('Error fetching global preferences:', error);
@@ -43,13 +43,13 @@ export async function POST(request: Request) {
       type: 'user_preference',
       language,
       project_id: 'global',
-      scope: 'global'
+      scope: 'global',
     });
 
     return NextResponse.json({
       success: true,
       message: 'Preference added successfully',
-      vectors_added: result.vectors_added
+      vectors_added: result.vectors_added,
     });
   } catch (error) {
     console.error('Error adding global preference:', error);
@@ -77,7 +77,7 @@ export async function PUT(request: Request) {
     await deleteSource({
       source,
       project_id: 'global',
-      scope: 'global'
+      scope: 'global',
     });
 
     // Add the updated preference
@@ -87,13 +87,13 @@ export async function PUT(request: Request) {
       type: 'user_preference',
       language: 'markdown',
       project_id: 'global',
-      scope: 'global'
+      scope: 'global',
     });
 
     return NextResponse.json({
       success: true,
       message: 'Preference updated successfully',
-      vectors_added: result.vectors_added
+      vectors_added: result.vectors_added,
     });
   } catch (error) {
     console.error('Error updating global preference:', error);
@@ -111,21 +111,18 @@ export async function DELETE(request: Request) {
     const { source } = body;
 
     if (!source) {
-      return NextResponse.json(
-        { success: false, error: 'Source is required' },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, error: 'Source is required' }, { status: 400 });
     }
 
     await deleteSource({
       source,
       project_id: 'global',
-      scope: 'global'
+      scope: 'global',
     });
 
     return NextResponse.json({
       success: true,
-      message: 'Preference deleted successfully'
+      message: 'Preference deleted successfully',
     });
   } catch (error) {
     console.error('Error deleting global preference:', error);

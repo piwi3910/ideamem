@@ -1,12 +1,12 @@
 import { prisma, initializeDatabase } from './database';
 import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
-import type { 
-  Project as PrismaProject, 
+import type {
+  Project as PrismaProject,
   IndexingJob as PrismaIndexingJob,
   IndexStatus,
   JobStatus,
-  TriggerType
+  TriggerType,
 } from './generated/prisma';
 
 // Export the Prisma types
@@ -27,47 +27,50 @@ export type UpdateProjectData = Partial<Omit<Project, 'id' | 'token' | 'createdA
 // Project CRUD operations
 export async function createProject(data: CreateProjectData): Promise<Project> {
   await initializeDatabase();
-  
+
   const token = `idm_${crypto.randomBytes(16).toString('hex')}`;
-  
+
   return await prisma.project.create({
     data: {
       name: data.name,
       gitRepo: data.gitRepo,
       description: data.description,
       token,
-    }
+    },
   });
 }
 
 export async function getProjects(): Promise<Project[]> {
   await initializeDatabase();
   return await prisma.project.findMany({
-    orderBy: { createdAt: 'desc' }
+    orderBy: { createdAt: 'desc' },
   });
 }
 
 export async function getProject(id: string): Promise<Project | null> {
   await initializeDatabase();
   return await prisma.project.findUnique({
-    where: { id }
+    where: { id },
   });
 }
 
 export async function getProjectByToken(token: string): Promise<Project | null> {
   await initializeDatabase();
   return await prisma.project.findUnique({
-    where: { token }
+    where: { token },
   });
 }
 
-export async function updateProject(id: string, updates: UpdateProjectData): Promise<Project | null> {
+export async function updateProject(
+  id: string,
+  updates: UpdateProjectData
+): Promise<Project | null> {
   await initializeDatabase();
-  
+
   try {
     return await prisma.project.update({
       where: { id },
-      data: updates
+      data: updates,
     });
   } catch {
     return null;
@@ -76,10 +79,10 @@ export async function updateProject(id: string, updates: UpdateProjectData): Pro
 
 export async function deleteProject(id: string): Promise<boolean> {
   await initializeDatabase();
-  
+
   try {
     await prisma.project.delete({
-      where: { id }
+      where: { id },
     });
     return true;
   } catch {
@@ -89,13 +92,13 @@ export async function deleteProject(id: string): Promise<boolean> {
 
 export async function regenerateToken(id: string): Promise<string | null> {
   await initializeDatabase();
-  
+
   const newToken = `idm_${crypto.randomBytes(16).toString('hex')}`;
-  
+
   try {
     const project = await prisma.project.update({
       where: { id },
-      data: { token: newToken }
+      data: { token: newToken },
     });
     return project.token;
   } catch {
@@ -105,7 +108,7 @@ export async function regenerateToken(id: string): Promise<string | null> {
 
 // Indexing job management
 export async function startIndexingJob(
-  projectId: string, 
+  projectId: string,
   options: {
     branch?: string;
     fullReindex?: boolean;
@@ -113,28 +116,28 @@ export async function startIndexingJob(
   } = {}
 ): Promise<IndexingJob> {
   await initializeDatabase();
-  
+
   // Cancel any existing running job
   await prisma.indexingJob.updateMany({
     where: {
       projectId,
-      status: { in: ['PENDING', 'RUNNING'] }
+      status: { in: ['PENDING', 'RUNNING'] },
     },
     data: {
       status: 'CANCELLED',
-      completedAt: new Date()
-    }
+      completedAt: new Date(),
+    },
   });
-  
+
   // Update project status
   await prisma.project.update({
     where: { id: projectId },
-    data: { 
+    data: {
       indexStatus: 'INDEXING',
-      indexProgress: 0
-    }
+      indexProgress: 0,
+    },
   });
-  
+
   // Create new job
   return await prisma.indexingJob.create({
     data: {
@@ -142,8 +145,8 @@ export async function startIndexingJob(
       branch: options.branch ?? 'main',
       fullReindex: options.fullReindex ?? false,
       triggeredBy: options.triggeredBy ?? 'MANUAL',
-      status: 'PENDING'
-    }
+      status: 'PENDING',
+    },
   });
 }
 
@@ -161,27 +164,27 @@ export async function updateIndexingProgress(
   }
 ): Promise<void> {
   await initializeDatabase();
-  
+
   const updateData: any = { ...updates };
-  
+
   if (updates.status === 'RUNNING' && !updateData.startedAt) {
     updateData.startedAt = new Date();
   }
-  
+
   if (updates.status && ['COMPLETED', 'FAILED', 'CANCELLED'].includes(updates.status)) {
     updateData.completedAt = new Date();
   }
-  
+
   // Update the job
   const job = await prisma.indexingJob.update({
     where: { id: jobId },
-    data: updateData
+    data: updateData,
   });
-  
+
   // Update project status if needed
   if (updates.status) {
     let projectStatus: IndexStatus = 'INDEXING';
-    
+
     if (updates.status === 'COMPLETED') {
       projectStatus = 'COMPLETED';
     } else if (updates.status === 'FAILED') {
@@ -189,67 +192,67 @@ export async function updateIndexingProgress(
     } else if (updates.status === 'CANCELLED') {
       projectStatus = 'IDLE';
     }
-    
+
     const projectUpdate: any = {
       indexStatus: projectStatus,
     };
-    
+
     if (updates.progress !== undefined) {
       projectUpdate.indexProgress = updates.progress;
     }
-    
+
     if (updates.status === 'COMPLETED') {
       projectUpdate.indexedAt = new Date();
     }
-    
+
     await prisma.project.update({
       where: { id: job.projectId },
-      data: projectUpdate
+      data: projectUpdate,
     });
   }
 }
 
 export async function getIndexingJob(projectId: string): Promise<IndexingJob | null> {
   await initializeDatabase();
-  
+
   return await prisma.indexingJob.findFirst({
     where: { projectId },
-    orderBy: { startedAt: 'desc' }
+    orderBy: { startedAt: 'desc' },
   });
 }
 
 export async function getActiveIndexingJob(projectId: string): Promise<IndexingJob | null> {
   await initializeDatabase();
-  
+
   return await prisma.indexingJob.findFirst({
     where: {
       projectId,
-      status: { in: ['PENDING', 'RUNNING'] }
+      status: { in: ['PENDING', 'RUNNING'] },
     },
-    orderBy: { startedAt: 'desc' }
+    orderBy: { startedAt: 'desc' },
   });
 }
 
 export async function cancelIndexingJob(projectId: string): Promise<boolean> {
   await initializeDatabase();
-  
+
   try {
     await prisma.indexingJob.updateMany({
       where: {
         projectId,
-        status: { in: ['PENDING', 'RUNNING'] }
+        status: { in: ['PENDING', 'RUNNING'] },
       },
       data: {
         status: 'CANCELLED',
-        completedAt: new Date()
-      }
+        completedAt: new Date(),
+      },
     });
-    
+
     await prisma.project.update({
       where: { id: projectId },
-      data: { indexStatus: 'IDLE' }
+      data: { indexStatus: 'IDLE' },
     });
-    
+
     return true;
   } catch {
     return false;
@@ -262,24 +265,25 @@ export async function toggleWebhook(projectId: string, enabled: boolean): Promis
 }
 
 export function getWebhookUrl(projectId: string, baseUrl?: string): string {
-  const base = baseUrl || (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000');
+  const base =
+    baseUrl || (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000');
   return `${base}/api/webhooks/${projectId}`;
 }
 
 // Usage tracking
 export async function trackQuery(projectId: string): Promise<void> {
   await initializeDatabase();
-  
+
   const now = new Date();
-  
+
   await prisma.project.update({
     where: { id: projectId },
     data: {
       totalQueries: { increment: 1 },
       queriesThisWeek: { increment: 1 },
       queriesThisMonth: { increment: 1 },
-      lastQueryAt: now
-    }
+      lastQueryAt: now,
+    },
   });
 }
 
@@ -293,19 +297,19 @@ export async function configureScheduledIndexing(
   }
 ): Promise<Project | null> {
   await initializeDatabase();
-  
+
   const updateData: any = {
     scheduledIndexingEnabled: config.enabled,
   };
-  
+
   if (config.branch) {
     updateData.scheduledIndexingBranch = config.branch;
   }
-  
+
   if (config.interval) {
     updateData.scheduledIndexingInterval = config.interval;
   }
-  
+
   if (config.enabled) {
     // Set next run time
     const nextRun = new Date();
@@ -314,82 +318,83 @@ export async function configureScheduledIndexing(
   } else {
     updateData.scheduledIndexingNextRun = null;
   }
-  
+
   return await updateProject(projectId, updateData);
 }
 
 export async function updateScheduledIndexingRun(
-  projectId: string, 
+  projectId: string,
   success: boolean,
   nextInterval?: number
 ): Promise<void> {
   await initializeDatabase();
-  
+
   const project = await getProject(projectId);
   if (!project) return;
-  
+
   const interval = nextInterval || project.scheduledIndexingInterval;
   const nextRun = new Date();
   nextRun.setMinutes(nextRun.getMinutes() + interval);
-  
+
   await prisma.project.update({
     where: { id: projectId },
     data: {
       scheduledIndexingLastRun: new Date(),
-      scheduledIndexingNextRun: project.scheduledIndexingEnabled ? nextRun : null
-    }
+      scheduledIndexingNextRun: project.scheduledIndexingEnabled ? nextRun : null,
+    },
   });
 }
 
 export async function getProjectsNeedingScheduledIndexing(): Promise<Project[]> {
   await initializeDatabase();
-  
+
   const now = new Date();
-  
+
   return await prisma.project.findMany({
     where: {
       scheduledIndexingEnabled: true,
       scheduledIndexingNextRun: {
-        lte: now
+        lte: now,
       },
       // Don't run if already indexing
-      indexStatus: { not: 'INDEXING' }
-    }
+      indexStatus: { not: 'INDEXING' },
+    },
   });
 }
 
 // Statistics and reporting
 export async function getProjectStats(projectId: string) {
   await initializeDatabase();
-  
+
   const project = await getProject(projectId);
   if (!project) return null;
-  
+
   const completedJobs = await prisma.indexingJob.count({
     where: {
       projectId,
-      status: 'COMPLETED'
-    }
+      status: 'COMPLETED',
+    },
   });
-  
+
   const failedJobs = await prisma.indexingJob.count({
     where: {
       projectId,
-      status: 'FAILED'
-    }
+      status: 'FAILED',
+    },
   });
-  
+
   const recentJobs = await prisma.indexingJob.findMany({
     where: { projectId },
     orderBy: { startedAt: 'desc' },
-    take: 5
+    take: 5,
   });
-  
+
   return {
     project,
     completedJobs,
     failedJobs,
     recentJobs,
-    successRate: completedJobs + failedJobs > 0 ? (completedJobs / (completedJobs + failedJobs)) * 100 : 0
+    successRate:
+      completedJobs + failedJobs > 0 ? (completedJobs / (completedJobs + failedJobs)) * 100 : 0,
   };
 }

@@ -10,7 +10,7 @@ import {
   TrashIcon,
   ShieldCheckIcon,
   DocumentTextIcon,
-  GlobeAltIcon
+  GlobeAltIcon,
 } from '@heroicons/react/24/outline';
 import { twMerge } from 'tailwind-merge';
 
@@ -69,17 +69,17 @@ export default function RulesPage() {
           source: newRule.source,
           content: newRule.content,
           type: 'rule',
-          language: 'markdown'
-        })
+          language: 'markdown',
+        }),
       });
 
       if (!response.ok) throw new Error('Failed to add rule');
-      
+
       setSaveMessage('Rule added successfully');
       setNewRule({ source: '', content: '' });
       setShowAddForm(false);
       await fetchRules();
-      
+
       setTimeout(() => setSaveMessage(''), 3000);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add rule');
@@ -96,16 +96,16 @@ export default function RulesPage() {
         body: JSON.stringify({
           id: rule.id,
           source: editingRule.payload.source,
-          content: editingRule.payload.content
-        })
+          content: editingRule.payload.content,
+        }),
       });
 
       if (!response.ok) throw new Error('Failed to update rule');
-      
+
       setSaveMessage('Rule updated successfully');
       setEditingRule(null);
       await fetchRules();
-      
+
       setTimeout(() => setSaveMessage(''), 3000);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update rule');
@@ -121,14 +121,14 @@ export default function RulesPage() {
       const response = await fetch('/api/global/rules', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ source: rule.payload.source })
+        body: JSON.stringify({ source: rule.payload.source }),
       });
 
       if (!response.ok) throw new Error('Failed to delete rule');
-      
+
       setSaveMessage('Rule deleted successfully');
       await fetchRules();
-      
+
       setTimeout(() => setSaveMessage(''), 3000);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete rule');
@@ -137,21 +137,35 @@ export default function RulesPage() {
 
   const renderRuleContent = (content: string) => {
     // Simple markdown-like rendering for display
-    return content
-      .split('\n')
-      .map((line, index) => {
-        if (line.startsWith('# ')) {
-          return <h2 key={index} className="text-lg font-semibold text-gray-900 mt-4 mb-2">{line.substring(2)}</h2>;
-        } else if (line.startsWith('## ')) {
-          return <h3 key={index} className="text-md font-medium text-gray-800 mt-3 mb-1">{line.substring(3)}</h3>;
-        } else if (line.startsWith('- ')) {
-          return <li key={index} className="text-sm text-gray-600 ml-4">{line.substring(2)}</li>;
-        } else if (line.trim()) {
-          return <p key={index} className="text-sm text-gray-600 mb-1">{line}</p>;
-        } else {
-          return <br key={index} />;
-        }
-      });
+    return content.split('\n').map((line, index) => {
+      if (line.startsWith('# ')) {
+        return (
+          <h2 key={index} className="text-lg font-semibold text-gray-900 mt-4 mb-2">
+            {line.substring(2)}
+          </h2>
+        );
+      } else if (line.startsWith('## ')) {
+        return (
+          <h3 key={index} className="text-md font-medium text-gray-800 mt-3 mb-1">
+            {line.substring(3)}
+          </h3>
+        );
+      } else if (line.startsWith('- ')) {
+        return (
+          <li key={index} className="text-sm text-gray-600 ml-4">
+            {line.substring(2)}
+          </li>
+        );
+      } else if (line.trim()) {
+        return (
+          <p key={index} className="text-sm text-gray-600 mb-1">
+            {line}
+          </p>
+        );
+      } else {
+        return <br key={index} />;
+      }
+    });
   };
 
   return (
@@ -198,12 +212,13 @@ export default function RulesPage() {
               <div className="flex-1">
                 <h2 className="text-xl font-semibold text-gray-900 mb-2">Global Coding Rules</h2>
                 <p className="text-gray-600 mb-4">
-                  Manage universal coding standards, style guides, and architectural constraints that apply across all projects. 
-                  These rules are used by the MCP validation tools to ensure code consistency and prevent common mistakes.
+                  Manage universal coding standards, style guides, and architectural constraints
+                  that apply across all projects. These rules are used by the MCP validation tools
+                  to ensure code consistency and prevent common mistakes.
                 </p>
                 <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
                   <p className="text-sm text-yellow-800">
-                    <strong>Priority:</strong> Project-specific rules always override global rules. 
+                    <strong>Priority:</strong> Project-specific rules always override global rules.
                     Global rules serve as fallbacks when no project-specific rules exist.
                   </p>
                 </div>
@@ -214,10 +229,7 @@ export default function RulesPage() {
           {/* Add Rule Button */}
           <div className="flex justify-between items-center">
             <h3 className="text-lg font-semibold text-gray-900">Current Rules ({rules.length})</h3>
-            <button
-              onClick={() => setShowAddForm(!showAddForm)}
-              className="btn btn-primary"
-            >
+            <button onClick={() => setShowAddForm(!showAddForm)} className="btn btn-primary">
               <PlusIcon className="h-4 w-4 mr-2" />
               Add New Rule
             </button>
@@ -257,18 +269,19 @@ export default function RulesPage() {
                     onChange={(e) => setNewRule({ ...newRule, content: e.target.value })}
                   />
                   <p className="text-xs text-gray-500 mt-1">
-                    Use markdown formatting. These rules will be searchable by the MCP validation tools.
+                    Use markdown formatting. These rules will be searchable by the MCP validation
+                    tools.
                   </p>
                 </div>
                 <div className="flex gap-3">
                   <button onClick={handleAddRule} className="btn btn-primary">
                     Save Rule
                   </button>
-                  <button 
+                  <button
                     onClick={() => {
                       setShowAddForm(false);
                       setNewRule({ source: '', content: '' });
-                    }} 
+                    }}
                     className="btn btn-secondary"
                   >
                     Cancel
@@ -307,10 +320,7 @@ export default function RulesPage() {
                 <DocumentTextIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                 <h3 className="text-lg font-medium text-gray-900 mb-2">No Rules Found</h3>
                 <p className="text-gray-600 mb-4">Get started by adding your first coding rule.</p>
-                <button
-                  onClick={() => setShowAddForm(true)}
-                  className="btn btn-primary"
-                >
+                <button onClick={() => setShowAddForm(true)} className="btn btn-primary">
                   <PlusIcon className="h-4 w-4 mr-2" />
                   Add First Rule
                 </button>
@@ -327,7 +337,9 @@ export default function RulesPage() {
                       </div>
                       <div>
                         <h4 className="font-semibold text-gray-900">{rule.payload.source}</h4>
-                        <p className="text-sm text-gray-500">Version {rule.version} • Global Scope</p>
+                        <p className="text-sm text-gray-500">
+                          Version {rule.version} • Global Scope
+                        </p>
                       </div>
                     </div>
                     <div className="flex gap-2">
@@ -356,10 +368,12 @@ export default function RulesPage() {
                           type="text"
                           className="input"
                           value={editingRule.payload.source}
-                          onChange={(e) => setEditingRule({
-                            ...editingRule,
-                            payload: { ...editingRule.payload, source: e.target.value }
-                          })}
+                          onChange={(e) =>
+                            setEditingRule({
+                              ...editingRule,
+                              payload: { ...editingRule.payload, source: e.target.value },
+                            })
+                          }
                         />
                       </div>
                       <div>
@@ -367,23 +381,19 @@ export default function RulesPage() {
                         <textarea
                           className="input min-h-[200px] font-mono text-sm"
                           value={editingRule.payload.content}
-                          onChange={(e) => setEditingRule({
-                            ...editingRule,
-                            payload: { ...editingRule.payload, content: e.target.value }
-                          })}
+                          onChange={(e) =>
+                            setEditingRule({
+                              ...editingRule,
+                              payload: { ...editingRule.payload, content: e.target.value },
+                            })
+                          }
                         />
                       </div>
                       <div className="flex gap-3">
-                        <button
-                          onClick={() => handleEditRule(rule)}
-                          className="btn btn-primary"
-                        >
+                        <button onClick={() => handleEditRule(rule)} className="btn btn-primary">
                           Save Changes
                         </button>
-                        <button
-                          onClick={() => setEditingRule(null)}
-                          className="btn btn-secondary"
-                        >
+                        <button onClick={() => setEditingRule(null)} className="btn btn-secondary">
                           Cancel
                         </button>
                       </div>

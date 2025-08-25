@@ -115,3 +115,203 @@ enum TriggerType {
   SCHEDULED
   API
 }
+
+// Enhanced documentation metadata
+model DocMetadata {
+  id              String   @id @default(uuid())
+  sourceUrl       String   @unique
+  contentType     String?  // 'api', 'tutorial', 'example', 'changelog', 'guide'
+  language        String?  // 'en', 'es', 'zh', etc.
+  lastUpdated     DateTime?
+  author          String?
+  version         String?
+  confidenceScore Float?   // Confidence in content classification (0.0-1.0)
+  title           String?
+  description     String?
+  wordCount       Int      @default(0)
+  
+  // Technical metadata
+  requiresDynamicRendering Boolean @default(false)
+  renderingEngine         String?  // 'static', 'playwright-chromium', etc.
+  lastCrawled            DateTime @default(now())
+  crawlDuration          Int?     // milliseconds
+  
+  // Relations
+  codeExamples           CodeExample[]
+  sourceRelationships    ContentRelationship[] @relation("SourceDoc")
+  targetRelationships    ContentRelationship[] @relation("TargetDoc")
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@map("doc_metadata")
+}
+
+// Extracted code examples from documentation
+model CodeExample {
+  id          String  @id @default(uuid())
+  docId       String
+  language    String  // 'javascript', 'python', 'typescript', etc.
+  codeContent String
+  isValid     Boolean @default(false)
+  lineStart   Int?
+  lineEnd     Int?
+  context     String? // Surrounding text explaining the code
+  
+  // Code analysis
+  hasErrors   Boolean @default(false)
+  errorMessage String?
+  imports     String? // JSON array of import statements
+  functions   String? // JSON array of function names
+  
+  // Relations
+  doc DocMetadata @relation(fields: [docId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  
+  @@map("code_examples")
+}
+
+// Relationships between documentation content
+model ContentRelationship {
+  id               String @id @default(uuid())
+  sourceDocId      String
+  targetDocId      String
+  relationshipType String // 'references', 'similar', 'prerequisite', 'see_also'
+  strength         Float  @default(0.0) // Relationship strength (0.0-1.0)
+  context          String? // Why these docs are related
+  
+  // Relations
+  sourceDoc DocMetadata @relation("SourceDoc", fields: [sourceDocId], references: [id], onDelete: Cascade)
+  targetDoc DocMetadata @relation("TargetDoc", fields: [targetDocId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  
+  @@unique([sourceDocId, targetDocId, relationshipType])
+  @@map("content_relationships")
+}
+
+// Cache for search results and parsed content
+model SearchCache {
+  id         String   @id @default(uuid())
+  queryHash  String   @unique // Hash of the search query + filters
+  results    String   // JSON serialized search results
+  hitCount   Int      @default(1)
+  lastHit    DateTime @default(now())
+  expiresAt  DateTime
+  
+  createdAt DateTime @default(now())
+  
+  @@map("search_cache")
+}
+
+// Cache for parsed content to avoid re-processing
+model ContentCache {
+  id            String   @id @default(uuid())
+  urlHash       String   @unique // Hash of the URL + last-modified
+  rawContent    String   // Original HTML/markdown content
+  parsedContent String   // Processed content ready for indexing
+  metadata      String   // JSON metadata about the content
+  lastModified  DateTime?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@map("content_cache")
+}
+
+// Full-text search index for hybrid search
+model SearchIndex {
+  id            String   @id @default(uuid())
+  contentHash   String   @unique // Hash of the content for deduplication
+  title         String?
+  content       String   // Full content for FTS
+  summary       String?  // Short summary for quick preview
+  
+  // Metadata for search filtering
+  sourceUrl     String
+  sourceType    String   // 'git', 'llmstxt', 'website'
+  contentType   String   // 'api', 'tutorial', 'example', etc.
+  language      String?
+  
+  // Search relevance factors
+  wordCount     Int      @default(0)
+  complexity    String   @default("medium") // 'beginner', 'intermediate', 'advanced'
+  freshness     Float    @default(1.0) // 0.0-1.0 based on recency
+  popularity    Int      @default(0) // Search hit count
+  
+  // Timestamps
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  lastSearched  DateTime?
+  
+  @@map("search_index")
+}
+
+// Search analytics and query tracking
+model SearchQuery {
+  id            String   @id @default(uuid())
+  query         String
+  queryHash     String   // Hash of normalized query
+  
+  // Search context
+  searchType    String   // 'semantic', 'keyword', 'hybrid'
+  filters       String?  // JSON of applied filters
+  
+  // Results metadata
+  resultCount   Int      @default(0)
+  searchTime    Int      @default(0) // milliseconds
+  clickedResult String?  // ID of clicked result
+  
+  // User context
+  sessionId     String?
+  userAgent     String?
+  
+  // Timestamps
+  createdAt     DateTime @default(now())
+  
+  @@index([queryHash])
+  @@index([createdAt])
+  @@map("search_queries")
+}
+
+// Popular search suggestions
+model SearchSuggestion {
+  id            String   @id @default(uuid())
+  suggestion    String   @unique
+  category      String   // 'popular', 'recent', 'related'
+  searchCount   Int      @default(1)
+  lastUsed      DateTime @default(now())
+  
+  // Related suggestions
+  relatedTo     String?  // Original query this is related to
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  @@index([category])
+  @@index([searchCount])
+  @@map("search_suggestions")
+}
+
+// User search history and saved searches
+model SavedSearch {
+  id            String   @id @default(uuid())
+  userId        String?  // For future user system
+  sessionId     String   // Current session-based
+  
+  query         String
+  filters       String?  // JSON of filters
+  name          String?  // User-given name
+  
+  // Metadata
+  useCount      Int      @default(1)
+  lastUsed      DateTime @default(now())
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  @@index([sessionId])
+  @@index([lastUsed])
+  @@map("saved_searches")
+}

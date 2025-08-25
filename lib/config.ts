@@ -13,9 +13,9 @@ const defaultConfig: AppConfig = {
 export async function getConfig(): Promise<AppConfig> {
   try {
     await initializeDatabase();
-    
+
     const config = await prisma.config.findUnique({
-      where: { id: 'default' }
+      where: { id: 'default' },
     });
 
     if (config) {
@@ -30,9 +30,9 @@ export async function getConfig(): Promise<AppConfig> {
           id: 'default',
           qdrantUrl: defaultConfig.qdrantUrl,
           ollamaUrl: defaultConfig.ollamaUrl,
-        }
+        },
       });
-      
+
       return {
         qdrantUrl: newConfig.qdrantUrl,
         ollamaUrl: newConfig.ollamaUrl,
@@ -48,7 +48,7 @@ export async function getConfig(): Promise<AppConfig> {
 export async function saveConfig(config: AppConfig): Promise<void> {
   try {
     await initializeDatabase();
-    
+
     await prisma.config.upsert({
       where: { id: 'default' },
       update: {
@@ -59,7 +59,7 @@ export async function saveConfig(config: AppConfig): Promise<void> {
         id: 'default',
         qdrantUrl: config.qdrantUrl,
         ollamaUrl: config.ollamaUrl,
-      }
+      },
     });
   } catch (error) {
     console.error('Failed to save config to database:', error);

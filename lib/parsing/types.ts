@@ -1,9 +1,27 @@
 // Parser interfaces and types for multi-language semantic understanding
 
 export interface SemanticChunk {
-  type: 'function' | 'class' | 'method' | 'variable' | 'interface' | 'type' | 'import' | 
-        'resource' | 'task' | 'play' | 'service' | 'config' | 'object' | 'array_section' | 
-        'instruction' | 'stage' | 'module' | 'struct' | 'package' | 'constant';
+  type:
+    | 'function'
+    | 'class'
+    | 'method'
+    | 'variable'
+    | 'interface'
+    | 'type'
+    | 'import'
+    | 'resource'
+    | 'task'
+    | 'play'
+    | 'service'
+    | 'config'
+    | 'object'
+    | 'array_section'
+    | 'instruction'
+    | 'stage'
+    | 'module'
+    | 'struct'
+    | 'package'
+    | 'constant';
   name: string;
   content: string;
   startLine: number;
@@ -33,9 +51,9 @@ export interface ParseResult {
 export abstract class BaseParser {
   abstract language: string;
   abstract fileExtensions: string[];
-  
+
   abstract parse(content: string, source?: string): ParseResult;
-  
+
   protected createChunk(
     type: SemanticChunk['type'],
     name: string,
@@ -52,15 +70,15 @@ export abstract class BaseParser {
       endLine,
       metadata: {
         language: this.language,
-        ...metadata
-      }
+        ...metadata,
+      },
     };
   }
-  
+
   protected getLineNumber(content: string, position: number): number {
     return content.substring(0, position).split('\n').length;
   }
-  
+
   protected extractLines(content: string, startLine: number, endLine: number): string {
     const lines = content.split('\n');
     return lines.slice(startLine - 1, endLine).join('\n');
@@ -77,7 +95,7 @@ export const SUPPORTED_LANGUAGES = {
   '.json': 'json',
   '.yaml': 'yaml',
   '.yml': 'yaml',
-  'Dockerfile': 'dockerfile',
+  Dockerfile: 'dockerfile',
   '.dockerfile': 'dockerfile',
   '.tf': 'terraform',
   '.tfvars': 'terraform',
@@ -90,7 +108,7 @@ export const SUPPORTED_LANGUAGES = {
   '.cxx': 'cpp',
   '.h': 'c',
   '.hpp': 'cpp',
-  '.hh': 'cpp'
+  '.hh': 'cpp',
 } as const;
 
-export type SupportedLanguage = typeof SUPPORTED_LANGUAGES[keyof typeof SUPPORTED_LANGUAGES];
+export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[keyof typeof SUPPORTED_LANGUAGES];

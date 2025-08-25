@@ -7,12 +7,12 @@ export async function GET() {
     const result = await retrieve({
       query: 'global rules coding standards',
       filters: { type: 'rule', scope: 'global', project_id: 'global' },
-      scope: 'global'
+      scope: 'global',
     });
 
     return NextResponse.json({
       success: true,
-      rules: result || []
+      rules: result || [],
     });
   } catch (error) {
     console.error('Error fetching global rules:', error);
@@ -43,20 +43,17 @@ export async function POST(request: Request) {
       type: 'rule',
       language,
       project_id: 'global',
-      scope: 'global'
+      scope: 'global',
     });
 
     return NextResponse.json({
       success: true,
       message: 'Rule added successfully',
-      vectors_added: result.vectors_added
+      vectors_added: result.vectors_added,
     });
   } catch (error) {
     console.error('Error adding global rule:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to add rule' },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: 'Failed to add rule' }, { status: 500 });
   }
 }
 
@@ -77,7 +74,7 @@ export async function PUT(request: Request) {
     await deleteSource({
       source,
       project_id: 'global',
-      scope: 'global'
+      scope: 'global',
     });
 
     // Add the updated rule
@@ -87,20 +84,17 @@ export async function PUT(request: Request) {
       type: 'rule',
       language: 'markdown',
       project_id: 'global',
-      scope: 'global'
+      scope: 'global',
     });
 
     return NextResponse.json({
       success: true,
       message: 'Rule updated successfully',
-      vectors_added: result.vectors_added
+      vectors_added: result.vectors_added,
     });
   } catch (error) {
     console.error('Error updating global rule:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to update rule' },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: 'Failed to update rule' }, { status: 500 });
   }
 }
 
@@ -111,27 +105,21 @@ export async function DELETE(request: Request) {
     const { source } = body;
 
     if (!source) {
-      return NextResponse.json(
-        { success: false, error: 'Source is required' },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, error: 'Source is required' }, { status: 400 });
     }
 
     await deleteSource({
       source,
       project_id: 'global',
-      scope: 'global'
+      scope: 'global',
     });
 
     return NextResponse.json({
       success: true,
-      message: 'Rule deleted successfully'
+      message: 'Rule deleted successfully',
     });
   } catch (error) {
     console.error('Error deleting global rule:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to delete rule' },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: 'Failed to delete rule' }, { status: 500 });
   }
 }

@@ -14,7 +14,6 @@ import {
   GlobeAltIcon,
   BookOpenIcon,
   CodeBracketIcon,
-  CloudArrowDownIcon
 } from '@heroicons/react/24/outline';
 import { twMerge } from 'tailwind-merge';
 
@@ -39,14 +38,14 @@ export default function DocsPage() {
   const [error, setError] = useState('');
   const [editingRepo, setEditingRepo] = useState<DocRepository | null>(null);
   const [newRepo, setNewRepo] = useState({
-    url: ''
+    url: '',
   });
   const [showAddForm, setShowAddForm] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
 
   useEffect(() => {
     fetchRepositories();
-    
+
     // Poll for status updates every 3 seconds to show real-time progress
     const interval = setInterval(fetchRepositories, 3000);
     return () => clearInterval(interval);
@@ -77,18 +76,20 @@ export default function DocsPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          url: newRepo.url
-        })
+          url: newRepo.url,
+        }),
       });
 
       if (!response.ok) throw new Error('Failed to add repository');
-      
+
       const data = await response.json();
-      setSaveMessage(`${data.repository.sourceType === 'git' ? 'Repository' : data.repository.sourceType === 'llmstxt' ? 'llms.txt file' : 'Website'} "${data.repository.name}" added and indexing started automatically!`);
+      setSaveMessage(
+        `${data.repository.sourceType === 'git' ? 'Repository' : data.repository.sourceType === 'llmstxt' ? 'llms.txt file' : 'Website'} "${data.repository.name}" added and indexing started automatically!`
+      );
       setNewRepo({ url: '' });
       setShowAddForm(false);
       await fetchRepositories();
-      
+
       setTimeout(() => setSaveMessage(''), 5000);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add repository');
@@ -104,16 +105,16 @@ export default function DocsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...editingRepo,
-          id: repo.id
-        })
+          id: repo.id,
+        }),
       });
 
       if (!response.ok) throw new Error('Failed to update repository');
-      
+
       setSaveMessage('Repository updated successfully');
       setEditingRepo(null);
       await fetchRepositories();
-      
+
       setTimeout(() => setSaveMessage(''), 3000);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update repository');
@@ -121,7 +122,11 @@ export default function DocsPage() {
   };
 
   const handleDeleteRepository = async (repo: DocRepository) => {
-    if (!confirm(`Are you sure you want to delete "${repo.name}"? This will remove all indexed documentation from this repository.`)) {
+    if (
+      !confirm(
+        `Are you sure you want to delete "${repo.name}"? This will remove all indexed documentation from this repository.`
+      )
+    ) {
       return;
     }
 
@@ -129,14 +134,14 @@ export default function DocsPage() {
       const response = await fetch('/api/global/docs/repositories', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: repo.id })
+        body: JSON.stringify({ id: repo.id }),
       });
 
       if (!response.ok) throw new Error('Failed to delete repository');
-      
+
       setSaveMessage('Repository deleted successfully');
       await fetchRepositories();
-      
+
       setTimeout(() => setSaveMessage(''), 3000);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete repository');
@@ -146,30 +151,34 @@ export default function DocsPage() {
   // Auto-indexing is now handled automatically when repositories are added
 
   const getStatusIcon = (status: DocRepository['status']) => {
-    const className = "h-5 w-5";
+    const className = 'h-5 w-5';
     switch (status) {
       case 'completed':
-        return <CheckCircleIcon className={twMerge(className, "text-green-500")} />;
+        return <CheckCircleIcon className={twMerge(className, 'text-green-500')} />;
       case 'error':
-        return <ExclamationCircleIcon className={twMerge(className, "text-red-500")} />;
+        return <ExclamationCircleIcon className={twMerge(className, 'text-red-500')} />;
       case 'indexing':
-        return <ArrowPathIcon className={twMerge(className, "text-blue-500 animate-spin")} />;
+        return <ArrowPathIcon className={twMerge(className, 'text-blue-500 animate-spin')} />;
       default:
-        return <ClockIcon className={twMerge(className, "text-gray-400")} />;
+        return <ClockIcon className={twMerge(className, 'text-gray-400')} />;
     }
   };
 
   const getStatusColor = (status: DocRepository['status']) => {
     switch (status) {
-      case 'completed': return 'text-green-600';
-      case 'error': return 'text-red-600';
-      case 'indexing': return 'text-blue-600';
-      default: return 'text-gray-500';
+      case 'completed':
+        return 'text-green-600';
+      case 'error':
+        return 'text-red-600';
+      case 'indexing':
+        return 'text-blue-600';
+      default:
+        return 'text-gray-500';
     }
   };
 
   const getSourceTypeIcon = (sourceType: DocRepository['sourceType']) => {
-    const className = "h-5 w-5 text-indigo-600";
+    const className = 'h-5 w-5 text-indigo-600';
     switch (sourceType) {
       case 'git':
         return <CodeBracketIcon className={className} />;
@@ -184,10 +193,14 @@ export default function DocsPage() {
 
   const getSourceTypeLabel = (sourceType: DocRepository['sourceType']) => {
     switch (sourceType) {
-      case 'git': return 'Git Repository';
-      case 'llmstxt': return 'llms.txt File';
-      case 'website': return 'Website';
-      default: return 'Documentation Source';
+      case 'git':
+        return 'Git Repository';
+      case 'llmstxt':
+        return 'llms.txt File';
+      case 'website':
+        return 'Website';
+      default:
+        return 'Documentation Source';
     }
   };
 
@@ -235,8 +248,10 @@ export default function DocsPage() {
               <div className="flex-1">
                 <h2 className="text-xl font-semibold text-gray-900 mb-2">Documentation Sources</h2>
                 <p className="text-gray-600 mb-4">
-                  Manage documentation sources including Git repositories, llms.txt files, and websites containing comprehensive, up-to-date documentation for languages, frameworks, and modules. 
-                  The MCP client can request documentation from these indexed sources to provide accurate, current information.
+                  Manage documentation sources including Git repositories, llms.txt files, and
+                  websites containing comprehensive, up-to-date documentation for languages,
+                  frameworks, and modules. The MCP client can request documentation from these
+                  indexed sources to provide accurate, current information.
                 </p>
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                   <div className="flex items-start gap-3">
@@ -244,9 +259,11 @@ export default function DocsPage() {
                     <div>
                       <h4 className="font-medium text-blue-900 mb-1">How it works</h4>
                       <p className="text-sm text-blue-800">
-                        Add documentation sources: Git repositories (README, API docs), llms.txt files (AI-optimized docs), or websites (documentation sites). 
-                        The system will fetch, parse, and index the content using our multi-format parser system. 
-                        MCP clients can then query this indexed knowledge for accurate, current information.
+                        Add documentation sources: Git repositories (README, API docs), llms.txt
+                        files (AI-optimized docs), or websites (documentation sites). The system
+                        will fetch, parse, and index the content using our multi-format parser
+                        system. MCP clients can then query this indexed knowledge for accurate,
+                        current information.
                       </p>
                     </div>
                   </div>
@@ -254,14 +271,12 @@ export default function DocsPage() {
               </div>
             </div>
           </div>
-
           {/* Add Repository Button */}
           <div className="flex justify-between items-center">
-            <h3 className="text-lg font-semibold text-gray-900">Documentation Sources ({repositories.length})</h3>
-            <button
-              onClick={() => setShowAddForm(!showAddForm)}
-              className="btn btn-primary"
-            >
+            <h3 className="text-lg font-semibold text-gray-900">
+              Documentation Sources ({repositories.length})
+            </h3>
+            <button onClick={() => setShowAddForm(!showAddForm)} className="btn btn-primary">
               <PlusIcon className="h-4 w-4 mr-2" />
               Add Source
             </button>
@@ -282,24 +297,30 @@ export default function DocsPage() {
                     onChange={(e) => setNewRepo({ ...newRepo, url: e.target.value })}
                   />
                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mt-2">
-                    <p className="text-xs text-blue-800 mb-2 font-medium">Supported source types:</p>
+                    <p className="text-xs text-blue-800 mb-2 font-medium">
+                      Supported source types:
+                    </p>
                     <div className="space-y-1 text-xs text-blue-700">
                       <div className="flex items-center gap-2">
                         <CodeBracketIcon className="h-3 w-3" />
-                        <strong>Git repositories:</strong> GitHub, GitLab, etc. (e.g., https://github.com/facebook/react)
+                        <strong>Git repositories:</strong> GitHub, GitLab, etc. (e.g.,
+                        https://github.com/facebook/react)
                       </div>
                       <div className="flex items-center gap-2">
                         <DocumentTextIcon className="h-3 w-3" />
-                        <strong>llms.txt files:</strong> AI-optimized docs (e.g., https://example.com/llms.txt)
+                        <strong>llms.txt files:</strong> AI-optimized docs (e.g.,
+                        https://example.com/llms.txt)
                       </div>
                       <div className="flex items-center gap-2">
                         <GlobeAltIcon className="h-3 w-3" />
-                        <strong>Websites:</strong> Documentation sites (e.g., https://docs.example.com)
+                        <strong>Websites:</strong> Documentation sites (e.g.,
+                        https://docs.example.com)
                       </div>
                     </div>
                     <p className="text-xs text-blue-600 mt-2 flex items-center gap-1">
                       <span>🤖</span>
-                      The system automatically detects source type and extracts relevant information.
+                      The system automatically detects source type and extracts relevant
+                      information.
                     </p>
                   </div>
                 </div>
@@ -307,11 +328,11 @@ export default function DocsPage() {
                   <button onClick={handleAddRepository} className="btn btn-primary">
                     Add Repository
                   </button>
-                  <button 
+                  <button
                     onClick={() => {
                       setShowAddForm(false);
                       setNewRepo({ url: '' });
-                    }} 
+                    }}
                     className="btn btn-secondary"
                   >
                     Cancel
@@ -350,12 +371,10 @@ export default function DocsPage() {
                 <BookOpenIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                 <h3 className="text-lg font-medium text-gray-900 mb-2">No Documentation Sources</h3>
                 <p className="text-gray-600 mb-4">
-                  Add your first documentation source to start building a comprehensive knowledge base.
+                  Add your first documentation source to start building a comprehensive knowledge
+                  base.
                 </p>
-                <button
-                  onClick={() => setShowAddForm(true)}
-                  className="btn btn-primary"
-                >
+                <button onClick={() => setShowAddForm(true)} className="btn btn-primary">
                   <PlusIcon className="h-4 w-4 mr-2" />
                   Add First Source
                 </button>
@@ -378,7 +397,12 @@ export default function DocsPage() {
                           </span>
                           <div className="flex items-center gap-2">
                             {getStatusIcon(repo.status)}
-                            <span className={twMerge("text-sm font-medium", getStatusColor(repo.status))}>
+                            <span
+                              className={twMerge(
+                                'text-sm font-medium',
+                                getStatusColor(repo.status)
+                              )}
+                            >
                               {repo.status === 'completed' && `${repo.documentCount} docs`}
                               {repo.status === 'indexing' && 'Indexing...'}
                               {repo.status === 'error' && 'Error'}
@@ -396,7 +420,9 @@ export default function DocsPage() {
                             <span>Branch: {repo.branch}</span>
                           )}
                           {repo.lastIndexed && (
-                            <span>Last indexed: {new Date(repo.lastIndexed).toLocaleDateString()}</span>
+                            <span>
+                              Last indexed: {new Date(repo.lastIndexed).toLocaleDateString()}
+                            </span>
                           )}
                         </div>
                         {repo.languages.length > 0 && (
@@ -463,7 +489,9 @@ export default function DocsPage() {
                             type="text"
                             className="input"
                             value={editingRepo.name}
-                            onChange={(e) => setEditingRepo({ ...editingRepo, name: e.target.value })}
+                            onChange={(e) =>
+                              setEditingRepo({ ...editingRepo, name: e.target.value })
+                            }
                           />
                         </div>
                         {editingRepo.sourceType === 'git' && (
@@ -473,15 +501,20 @@ export default function DocsPage() {
                               type="text"
                               className="input"
                               value={editingRepo.branch || ''}
-                              onChange={(e) => setEditingRepo({ ...editingRepo, branch: e.target.value })}
+                              onChange={(e) =>
+                                setEditingRepo({ ...editingRepo, branch: e.target.value })
+                              }
                             />
                           </div>
                         )}
                       </div>
                       <div>
                         <label className="label">
-                          {editingRepo.sourceType === 'git' ? 'Git Repository URL' : 
-                           editingRepo.sourceType === 'llmstxt' ? 'llms.txt File URL' : 'Website URL'}
+                          {editingRepo.sourceType === 'git'
+                            ? 'Git Repository URL'
+                            : editingRepo.sourceType === 'llmstxt'
+                              ? 'llms.txt File URL'
+                              : 'Website URL'}
                         </label>
                         <input
                           type="url"
@@ -502,7 +535,9 @@ export default function DocsPage() {
                           type="text"
                           className="input"
                           value={editingRepo.description || ''}
-                          onChange={(e) => setEditingRepo({ ...editingRepo, description: e.target.value })}
+                          onChange={(e) =>
+                            setEditingRepo({ ...editingRepo, description: e.target.value })
+                          }
                         />
                       </div>
                       <div>
@@ -511,10 +546,15 @@ export default function DocsPage() {
                           type="text"
                           className="input"
                           value={editingRepo.languages.join(', ')}
-                          onChange={(e) => setEditingRepo({ 
-                            ...editingRepo, 
-                            languages: e.target.value.split(',').map(l => l.trim()).filter(Boolean)
-                          })}
+                          onChange={(e) =>
+                            setEditingRepo({
+                              ...editingRepo,
+                              languages: e.target.value
+                                .split(',')
+                                .map((l) => l.trim())
+                                .filter(Boolean),
+                            })
+                          }
                         />
                       </div>
                       <div className="flex gap-3">
@@ -524,10 +564,7 @@ export default function DocsPage() {
                         >
                           Save Changes
                         </button>
-                        <button
-                          onClick={() => setEditingRepo(null)}
-                          className="btn btn-secondary"
-                        >
+                        <button onClick={() => setEditingRepo(null)} className="btn btn-secondary">
                           Cancel
                         </button>
                       </div>

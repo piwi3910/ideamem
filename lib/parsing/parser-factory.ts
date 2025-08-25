@@ -25,12 +25,12 @@ export class ParserFactory {
       new GoParser(),
       new DockerfileParser(),
       new AnsibleParser(),
-      new TerraformParser()
+      new TerraformParser(),
     ];
 
     for (const parser of parsers) {
       this.parsers.set(parser.language, parser);
-      
+
       // Map file extensions to parsers
       for (const ext of parser.fileExtensions) {
         this.fileExtensionMap.set(ext.toLowerCase(), parser);
@@ -43,7 +43,7 @@ export class ParserFactory {
    */
   parse(content: string, source?: string, language?: string): ParseResult {
     const parser = this.getParser(source, language, content);
-    
+
     if (!parser) {
       return this.createFallbackResult(content, source, 'No suitable parser found');
     }
@@ -84,7 +84,7 @@ export class ParserFactory {
 
   private detectByFileExtension(source: string): BaseParser | null {
     const fileName = source.toLowerCase();
-    
+
     // Check exact filename matches first (e.g., Dockerfile)
     const extensions = Array.from(this.fileExtensionMap.keys());
     for (const ext of extensions) {
@@ -96,7 +96,7 @@ export class ParserFactory {
     // Extract file extension
     const lastDot = fileName.lastIndexOf('.');
     if (lastDot === -1) return null;
-    
+
     const extension = fileName.substring(lastDot);
     return this.fileExtensionMap.get(extension) || null;
   }
@@ -106,18 +106,22 @@ export class ParserFactory {
     const baseName = source.split('/').pop()?.toLowerCase() || '';
 
     // Dockerfile patterns
-    if (baseName === 'dockerfile' || 
-        baseName.includes('dockerfile') ||
-        fileName.includes('.dockerfile')) {
+    if (
+      baseName === 'dockerfile' ||
+      baseName.includes('dockerfile') ||
+      fileName.includes('.dockerfile')
+    ) {
       return this.parsers.get('dockerfile') || null;
     }
 
     // Ansible patterns
-    if (fileName.includes('playbook') ||
-        fileName.includes('ansible') ||
-        fileName.includes('roles/') ||
-        fileName.includes('tasks/') ||
-        fileName.includes('handlers/')) {
+    if (
+      fileName.includes('playbook') ||
+      fileName.includes('ansible') ||
+      fileName.includes('roles/') ||
+      fileName.includes('tasks/') ||
+      fileName.includes('handlers/')
+    ) {
       return this.parsers.get('yaml') || null; // Ansible uses YAML parser
     }
 
@@ -176,10 +180,10 @@ export class ParserFactory {
       /from \w+ import/,
       /def \w+\(/,
       /class \w+/,
-      /if __name__ == ['"]__main__['"]/
+      /if __name__ == ['"]__main__['"]/,
     ];
 
-    return pythonPatterns.some(pattern => pattern.test(content));
+    return pythonPatterns.some((pattern) => pattern.test(content));
   }
 
   private isGoContent(content: string): boolean {
@@ -189,10 +193,10 @@ export class ParserFactory {
       /func \w+/,
       /type \w+ struct/,
       /var \w+ /,
-      /const \w+ /
+      /const \w+ /,
     ];
 
-    return goPatterns.some(pattern => pattern.test(content));
+    return goPatterns.some((pattern) => pattern.test(content));
   }
 
   private isJSONContent(content: string): boolean {
@@ -216,33 +220,44 @@ export class ParserFactory {
       /^  \w+:/,
       /^- \w+/,
       /version:\s*['"]?\d/,
-      /apiversion:/i
+      /apiversion:/i,
     ];
 
-    return yamlPatterns.some(pattern => pattern.test(content));
+    return yamlPatterns.some((pattern) => pattern.test(content));
   }
 
   private isAnsibleContent(content: string, source?: string): boolean {
     // Check file path indicators
     if (source) {
       const lowerSource = source.toLowerCase();
-      if (lowerSource.includes('playbook') || 
-          lowerSource.includes('ansible') || 
-          lowerSource.includes('roles/') ||
-          lowerSource.includes('tasks/') ||
-          lowerSource.includes('handlers/')) {
+      if (
+        lowerSource.includes('playbook') ||
+        lowerSource.includes('ansible') ||
+        lowerSource.includes('roles/') ||
+        lowerSource.includes('tasks/') ||
+        lowerSource.includes('handlers/')
+      ) {
         return true;
       }
     }
 
     // Check content indicators
     const ansibleKeywords = [
-      'hosts:', 'become:', 'tasks:', 'handlers:', 'vars:', 'defaults:',
-      'roles:', 'name:', 'ansible_', 'gather_facts:', 'remote_user:'
+      'hosts:',
+      'become:',
+      'tasks:',
+      'handlers:',
+      'vars:',
+      'defaults:',
+      'roles:',
+      'name:',
+      'ansible_',
+      'gather_facts:',
+      'remote_user:',
     ];
 
     const lowerContent = content.toLowerCase();
-    return ansibleKeywords.some(keyword => lowerContent.includes(keyword));
+    return ansibleKeywords.some((keyword) => lowerContent.includes(keyword));
   }
 
   private isDockerfileContent(content: string): boolean {
@@ -254,10 +269,10 @@ export class ParserFactory {
       /^workdir /i,
       /^expose \d+/i,
       /^cmd \[/i,
-      /^entrypoint \[/i
+      /^entrypoint \[/i,
     ];
 
-    return dockerfilePatterns.some(pattern => pattern.test(content));
+    return dockerfilePatterns.some((pattern) => pattern.test(content));
   }
 
   private isTerraformContent(content: string): boolean {
@@ -269,10 +284,10 @@ export class ParserFactory {
       /^variable "/,
       /^output "/,
       /^locals \{/,
-      /^terraform \{/
+      /^terraform \{/,
     ];
 
-    return terraformPatterns.some(pattern => pattern.test(content));
+    return terraformPatterns.some((pattern) => pattern.test(content));
   }
 
   private createFallbackResult(content: string, source?: string, error?: string): ParseResult {
@@ -285,15 +300,15 @@ export class ParserFactory {
       endLine: lines.length,
       metadata: {
         language: 'text',
-        dependencies: []
-      }
+        dependencies: [],
+      },
     };
 
     return {
       chunks: [fallbackChunk],
       success: false,
       error: error || 'Unknown content type',
-      fallbackUsed: true
+      fallbackUsed: true,
     };
   }
 
@@ -328,18 +343,20 @@ export class ParserFactory {
   /**
    * Batch parse multiple files
    */
-  async batchParse(files: Array<{
-    content: string;
-    source: string;
-    language?: string;
-  }>): Promise<Array<ParseResult & { source: string }>> {
+  async batchParse(
+    files: Array<{
+      content: string;
+      source: string;
+      language?: string;
+    }>
+  ): Promise<Array<ParseResult & { source: string }>> {
     const results: Array<ParseResult & { source: string }> = [];
-    
+
     for (const file of files) {
       const result = this.parse(file.content, file.source, file.language);
       results.push({
         ...result,
-        source: file.source
+        source: file.source,
       });
     }
 

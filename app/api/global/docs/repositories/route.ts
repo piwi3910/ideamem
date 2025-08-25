@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { writeFile, readFile, mkdir, readdir, stat, rm } from 'fs/promises';
+import { writeFile, readFile, mkdir, readdir, rm } from 'fs/promises';
 import { existsSync } from 'fs';
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
@@ -29,20 +29,25 @@ const REPOS_FILE = path.join(DATA_DIR, 'doc-repositories.json');
 // Auto-detect source type from URL
 function detectSourceType(url: string): 'git' | 'llmstxt' | 'website' {
   // Git repository patterns
-  if (url.includes('github.com') || url.includes('gitlab.com') || url.includes('bitbucket.') || url.endsWith('.git')) {
+  if (
+    url.includes('github.com') ||
+    url.includes('gitlab.com') ||
+    url.includes('bitbucket.') ||
+    url.endsWith('.git')
+  ) {
     return 'git';
   }
-  
+
   // llms.txt file patterns
   if (url.includes('/llms.txt') || url.includes('/llms-full.txt')) {
     return 'llmstxt';
   }
-  
+
   // Default to website for other URLs
   if (url.startsWith('http://') || url.startsWith('https://')) {
     return 'website';
   }
-  
+
   return 'git'; // Fallback
 }
 
@@ -54,32 +59,32 @@ async function autoDetectLLMsTxtInfo(url: string): Promise<{
 }> {
   try {
     console.log(`Fetching llms.txt from: ${url}`);
-    
+
     const response = await fetch(url);
     if (!response.ok) {
       throw new Error(`Failed to fetch llms.txt: ${response.status}`);
     }
-    
+
     const content = await response.text();
-    
+
     // Parse llms.txt content
     const lines = content.split('\n');
     let name = 'Unknown Documentation';
     let description = '';
-    let languages: string[] = [];
-    
+    const languages: string[] = [];
+
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i].trim();
-      
+
       // Extract H1 title (# Project Name)
       if (line.startsWith('# ') && !name.includes('/')) {
         name = line.substring(2).trim();
       }
-      
+
       // Extract blockquote description (> Summary)
       if (line.startsWith('> ')) {
         description = line.substring(2).trim();
-        
+
         // Continue reading multi-line blockquotes
         for (let j = i + 1; j < lines.length; j++) {
           const nextLine = lines[j].trim();
@@ -92,30 +97,37 @@ async function autoDetectLLMsTxtInfo(url: string): Promise<{
         }
       }
     }
-    
+
     // Detect languages from content and URL
     const contentLower = content.toLowerCase();
-    if (contentLower.includes('javascript') || contentLower.includes('js') || contentLower.includes('node')) languages.push('javascript');
-    if (contentLower.includes('typescript') || contentLower.includes('ts')) languages.push('typescript');
+    if (
+      contentLower.includes('javascript') ||
+      contentLower.includes('js') ||
+      contentLower.includes('node')
+    )
+      languages.push('javascript');
+    if (contentLower.includes('typescript') || contentLower.includes('ts'))
+      languages.push('typescript');
     if (contentLower.includes('python') || contentLower.includes('py')) languages.push('python');
     if (contentLower.includes('react')) languages.push('react');
-    if (contentLower.includes('next.js') || contentLower.includes('nextjs')) languages.push('nextjs');
+    if (contentLower.includes('next.js') || contentLower.includes('nextjs'))
+      languages.push('nextjs');
     if (contentLower.includes('go') || contentLower.includes('golang')) languages.push('go');
     if (contentLower.includes('rust')) languages.push('rust');
     if (contentLower.includes('api')) languages.push('api');
-    
+
     return {
       name: name || extractNameFromUrl(url),
       description: description || `Documentation from ${extractNameFromUrl(url)}`,
-      languages: languages.slice(0, 5) // Limit to 5 languages
+      languages: languages.slice(0, 5), // Limit to 5 languages
     };
   } catch (error) {
     console.error('Error detecting llms.txt info:', error);
-    
+
     return {
       name: extractNameFromUrl(url),
       description: `Documentation from ${extractNameFromUrl(url)}`,
-      languages: []
+      languages: [],
     };
   }
 }
@@ -128,44 +140,47 @@ async function autoDetectWebsiteInfo(url: string): Promise<{
 }> {
   try {
     console.log(`Fetching website info from: ${url}`);
-    
+
     const response = await fetch(url);
     if (!response.ok) {
       throw new Error(`Failed to fetch website: ${response.status}`);
     }
-    
+
     const html = await response.text();
-    
+
     // Extract title
     const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
     const title = titleMatch ? titleMatch[1].trim() : extractNameFromUrl(url);
-    
+
     // Extract meta description
-    const descMatch = html.match(/<meta[^>]*name=["\']description["\'][^>]*content=["\']([^"']+)["\'][^>]*>/i);
+    const descMatch = html.match(
+      /<meta[^>]*name=["\']description["\'][^>]*content=["\']([^"']+)["\'][^>]*>/i
+    );
     const description = descMatch ? descMatch[1].trim() : `Documentation from ${title}`;
-    
+
     // Basic language detection from content
     const htmlLower = html.toLowerCase();
     const languages: string[] = [];
-    
+
     if (htmlLower.includes('javascript') || htmlLower.includes('js')) languages.push('javascript');
     if (htmlLower.includes('typescript') || htmlLower.includes('ts')) languages.push('typescript');
     if (htmlLower.includes('python') || htmlLower.includes('api')) languages.push('python');
     if (htmlLower.includes('react')) languages.push('react');
-    if (htmlLower.includes('documentation') || htmlLower.includes('docs')) languages.push('documentation');
-    
+    if (htmlLower.includes('documentation') || htmlLower.includes('docs'))
+      languages.push('documentation');
+
     return {
       name: title,
       description: description,
-      languages: languages.slice(0, 5)
+      languages: languages.slice(0, 5),
     };
   } catch (error) {
     console.error('Error detecting website info:', error);
-    
+
     return {
       name: extractNameFromUrl(url),
       description: `Documentation from ${extractNameFromUrl(url)}`,
-      languages: []
+      languages: [],
     };
   }
 }
@@ -175,12 +190,12 @@ function extractNameFromUrl(url: string): string {
   try {
     const urlObj = new URL(url);
     const domain = urlObj.hostname.replace('www.', '');
-    const pathParts = urlObj.pathname.split('/').filter(p => p);
-    
+    const pathParts = urlObj.pathname.split('/').filter((p) => p);
+
     if (pathParts.length > 0) {
       return `${domain}/${pathParts[0]}`;
     }
-    
+
     return domain;
   } catch (error) {
     return url.split('/')[2] || 'Unknown';
@@ -195,55 +210,54 @@ async function autoDetectRepositoryInfo(gitUrl: string): Promise<{
   branch: string;
 }> {
   let tempDir: string | null = null;
-  
+
   try {
     // Create temporary directory for cloning
     tempDir = path.join(os.tmpdir(), `ideamem-detect-${uuidv4()}`);
-    
+
     // Extract repository name from URL
     const urlParts = gitUrl.replace(/\.git$/, '').split('/');
     const repoName = urlParts[urlParts.length - 1] || 'Unknown Repository';
     const ownerName = urlParts[urlParts.length - 2] || '';
     const displayName = `${ownerName}/${repoName}`.replace(/^\//, '');
-    
+
     console.log(`Auto-detecting info for repository: ${displayName}`);
-    
+
     // Clone repository (shallow clone for speed)
     const git = simpleGit();
     await git.clone(gitUrl, tempDir, ['--depth', '1']);
-    
+
     // Get default branch
     const repoGit = simpleGit(tempDir);
     const branches = await repoGit.branch(['--all']);
     const defaultBranch = branches.current || 'main';
-    
+
     // Extract description from README
     const description = await extractDescriptionFromReadme(tempDir);
-    
+
     // Detect languages
     const languages = await detectLanguages(tempDir);
-    
+
     return {
       name: displayName,
       description: description || `Documentation for ${repoName}`,
       languages,
-      branch: defaultBranch
+      branch: defaultBranch,
     };
-    
   } catch (error) {
     console.error('Error auto-detecting repository info:', error);
-    
+
     // Fallback to URL-based extraction
     const urlParts = gitUrl.replace(/\.git$/, '').split('/');
     const repoName = urlParts[urlParts.length - 1] || 'Unknown Repository';
     const ownerName = urlParts[urlParts.length - 2] || '';
     const displayName = `${ownerName}/${repoName}`.replace(/^\//, '');
-    
+
     return {
       name: displayName,
       description: `Documentation for ${repoName}`,
       languages: [],
-      branch: 'main'
+      branch: 'main',
     };
   } finally {
     // Clean up temporary directory
@@ -259,28 +273,28 @@ async function autoDetectRepositoryInfo(gitUrl: string): Promise<{
 
 async function extractDescriptionFromReadme(repoPath: string): Promise<string> {
   const readmeFiles = ['README.md', 'readme.md', 'README.rst', 'README.txt'];
-  
+
   for (const filename of readmeFiles) {
     const filePath = path.join(repoPath, filename);
-    
+
     if (existsSync(filePath)) {
       try {
         const content = await readFile(filePath, 'utf-8');
-        
+
         // Extract first paragraph or heading description
         const lines = content.split('\n');
         let description = '';
-        
+
         for (let i = 0; i < lines.length; i++) {
           const line = lines[i].trim();
-          
+
           // Skip empty lines and main title
           if (!line || line.match(/^#{1,3}\s/)) continue;
-          
+
           // Look for description after title
           if (line && !line.startsWith('#') && !line.startsWith('```')) {
             description = line.replace(/[*_`]/g, '').trim();
-            
+
             // If description is too short, try to get more context
             if (description.length < 20 && i + 1 < lines.length) {
               const nextLine = lines[i + 1].trim();
@@ -288,30 +302,30 @@ async function extractDescriptionFromReadme(repoPath: string): Promise<string> {
                 description += ' ' + nextLine.replace(/[*_`]/g, '').trim();
               }
             }
-            
+
             break;
           }
         }
-        
+
         // Limit description length
         if (description.length > 200) {
           description = description.substring(0, 200).trim() + '...';
         }
-        
+
         return description;
       } catch (error) {
         console.warn(`Could not read README file ${filePath}:`, error);
       }
     }
   }
-  
+
   return '';
 }
 
 async function detectLanguages(repoPath: string): Promise<string[]> {
   const languageMap: Record<string, string> = {
     '.js': 'javascript',
-    '.jsx': 'javascript', 
+    '.jsx': 'javascript',
     '.ts': 'typescript',
     '.tsx': 'typescript',
     '.py': 'python',
@@ -335,14 +349,14 @@ async function detectLanguages(repoPath: string): Promise<string[]> {
     '.lua': 'lua',
     '.r': 'r',
     '.m': 'objective-c',
-    '.mm': 'objective-c'
+    '.mm': 'objective-c',
   };
-  
+
   const languageCount: Record<string, number> = {};
-  
+
   try {
     await scanDirectory(repoPath, languageMap, languageCount, 0, 3); // Max depth 3
-    
+
     // Also check for common framework/config files
     const configFiles = [
       { file: 'package.json', languages: ['javascript', 'typescript'] },
@@ -355,23 +369,22 @@ async function detectLanguages(repoPath: string): Promise<string[]> {
       { file: 'composer.json', languages: ['php'] },
       { file: 'pom.xml', languages: ['java'] },
       { file: 'build.gradle', languages: ['java'] },
-      { file: 'pubspec.yaml', languages: ['dart'] }
+      { file: 'pubspec.yaml', languages: ['dart'] },
     ];
-    
+
     for (const config of configFiles) {
       if (existsSync(path.join(repoPath, config.file))) {
-        config.languages.forEach(lang => {
+        config.languages.forEach((lang) => {
           languageCount[lang] = (languageCount[lang] || 0) + 10; // Boost for config files
         });
       }
     }
-    
+
     // Return languages sorted by frequency
     return Object.entries(languageCount)
-      .sort(([,a], [,b]) => b - a)
+      .sort(([, a], [, b]) => b - a)
       .slice(0, 5) // Top 5 languages
       .map(([lang]) => lang);
-    
   } catch (error) {
     console.warn('Error detecting languages:', error);
     return [];
@@ -379,30 +392,42 @@ async function detectLanguages(repoPath: string): Promise<string[]> {
 }
 
 async function scanDirectory(
-  dirPath: string, 
-  languageMap: Record<string, string>, 
+  dirPath: string,
+  languageMap: Record<string, string>,
   languageCount: Record<string, number>,
   currentDepth: number,
   maxDepth: number
 ): Promise<void> {
   if (currentDepth >= maxDepth) return;
-  
+
   try {
     const entries = await readdir(dirPath, { withFileTypes: true });
-    
+
     for (const entry of entries) {
       const fullPath = path.join(dirPath, entry.name);
-      
+
       // Skip common directories we don't want to scan
       if (entry.isDirectory()) {
-        if (['node_modules', '.git', '.next', 'dist', 'build', 'target', '__pycache__', '.vscode', '.idea'].includes(entry.name)) {
+        if (
+          [
+            'node_modules',
+            '.git',
+            '.next',
+            'dist',
+            'build',
+            'target',
+            '__pycache__',
+            '.vscode',
+            '.idea',
+          ].includes(entry.name)
+        ) {
           continue;
         }
         await scanDirectory(fullPath, languageMap, languageCount, currentDepth + 1, maxDepth);
       } else if (entry.isFile()) {
         const ext = path.extname(entry.name).toLowerCase();
         const language = languageMap[ext];
-        
+
         if (language) {
           languageCount[language] = (languageCount[language] || 0) + 1;
         }
@@ -449,7 +474,7 @@ export async function GET() {
     const repositories = await loadRepositories();
     return NextResponse.json({
       success: true,
-      repositories
+      repositories,
     });
   } catch (error) {
     console.error('Error fetching repositories:', error);
@@ -467,19 +492,14 @@ export async function POST(request: Request) {
     const { url } = body; // Changed from gitUrl to url for flexibility
 
     if (!url) {
-      return NextResponse.json(
-        { success: false, error: 'URL is required' },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, error: 'URL is required' }, { status: 400 });
     }
 
     const repositories = await loadRepositories();
-    
+
     // Check for duplicate URLs (check both gitUrl and url fields)
-    const existingRepo = repositories.find(repo => 
-      repo.gitUrl === url || repo.url === url
-    );
-    
+    const existingRepo = repositories.find((repo) => repo.gitUrl === url || repo.url === url);
+
     if (existingRepo) {
       return NextResponse.json(
         { success: false, error: 'Source with this URL already exists' },
@@ -501,7 +521,7 @@ export async function POST(request: Request) {
     } else {
       name = extractNameFromUrl(url);
     }
-    
+
     const newRepo: DocRepository = {
       id: uuidv4(),
       name,
@@ -512,23 +532,25 @@ export async function POST(request: Request) {
       status: 'indexing', // Start indexing immediately
       documentCount: 0,
       createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
     };
 
     repositories.push(newRepo);
     await saveRepositories(repositories);
 
-    console.log(`${sourceType.toUpperCase()} source ${name} added, starting background indexing...`);
+    console.log(
+      `${sourceType.toUpperCase()} source ${name} added, starting background indexing...`
+    );
 
     // Start background indexing immediately (non-blocking)
-    startBackgroundIndexing(newRepo.id, url, sourceType).catch(error => {
+    startBackgroundIndexing(newRepo.id, url, sourceType).catch((error) => {
       console.error(`Background indexing failed for ${name}:`, error);
     });
 
     return NextResponse.json({
       success: true,
       message: `${sourceType.toUpperCase()} source ${name} added and indexing started`,
-      repository: newRepo
+      repository: newRepo,
     });
   } catch (error) {
     console.error('Error adding repository:', error);
@@ -540,12 +562,16 @@ export async function POST(request: Request) {
 }
 
 // Background indexing function that runs without blocking the response
-async function startBackgroundIndexing(repositoryId: string, url: string, sourceType: 'git' | 'llmstxt' | 'website') {
+async function startBackgroundIndexing(
+  repositoryId: string,
+  url: string,
+  sourceType: 'git' | 'llmstxt' | 'website'
+) {
   try {
     console.log(`Starting background auto-detection and indexing for ${sourceType}...`);
-    
+
     let detectedInfo;
-    
+
     // Auto-detect information based on source type
     switch (sourceType) {
       case 'git':
@@ -560,49 +586,60 @@ async function startBackgroundIndexing(repositoryId: string, url: string, source
       default:
         throw new Error(`Unknown source type: ${sourceType}`);
     }
-    
+
     // Update repository with detected info
     await updateRepositoryWithDetectedInfo(repositoryId, detectedInfo);
-    
+
     // Start the actual indexing process
-    const indexResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/api/global/docs/index`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ repositoryId })
-    });
-    
+    const indexResponse = await fetch(
+      `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/api/global/docs/index`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ repositoryId }),
+      }
+    );
+
     if (!indexResponse.ok) {
       const error = await indexResponse.json();
       throw new Error(error.error || 'Failed to start indexing');
     }
-    
-    console.log(`Background indexing started successfully for ${sourceType} source ${repositoryId}`);
+
+    console.log(
+      `Background indexing started successfully for ${sourceType} source ${repositoryId}`
+    );
   } catch (error) {
     console.error(`Background indexing failed for ${sourceType} source ${repositoryId}:`, error);
-    
+
     // Update repository status to error
-    await updateRepositoryStatus(repositoryId, 'error', 0, error instanceof Error ? error.message : 'Unknown error');
+    await updateRepositoryStatus(
+      repositoryId,
+      'error',
+      0,
+      error instanceof Error ? error.message : 'Unknown error'
+    );
   }
 }
 
 // Helper function to update repository status
 async function updateRepositoryStatus(
-  id: string, 
-  status: DocRepository['status'], 
-  documentCount?: number, 
+  id: string,
+  status: DocRepository['status'],
+  documentCount?: number,
   error?: string
 ) {
   const repositories = await loadRepositories();
-  const repoIndex = repositories.findIndex(repo => repo.id === id);
-  
+  const repoIndex = repositories.findIndex((repo) => repo.id === id);
+
   if (repoIndex !== -1) {
     repositories[repoIndex] = {
       ...repositories[repoIndex],
       status,
       documentCount: documentCount ?? repositories[repoIndex].documentCount,
       lastError: error,
-      lastIndexed: status === 'completed' ? new Date().toISOString() : repositories[repoIndex].lastIndexed,
-      updatedAt: new Date().toISOString()
+      lastIndexed:
+        status === 'completed' ? new Date().toISOString() : repositories[repoIndex].lastIndexed,
+      updatedAt: new Date().toISOString(),
     };
     await saveRepositories(repositories);
   }
@@ -610,12 +647,12 @@ async function updateRepositoryStatus(
 
 // Helper function to update repository with detected information
 async function updateRepositoryWithDetectedInfo(
-  repositoryId: string, 
+  repositoryId: string,
   repoInfo: { name: string; description: string; languages: string[]; branch?: string }
 ) {
   const repositories = await loadRepositories();
-  const repoIndex = repositories.findIndex(repo => repo.id === repositoryId);
-  
+  const repoIndex = repositories.findIndex((repo) => repo.id === repositoryId);
+
   if (repoIndex !== -1) {
     repositories[repoIndex] = {
       ...repositories[repoIndex],
@@ -623,7 +660,7 @@ async function updateRepositoryWithDetectedInfo(
       description: repoInfo.description,
       languages: repoInfo.languages,
       ...(repoInfo.branch && { branch: repoInfo.branch }),
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
     };
     await saveRepositories(repositories);
     console.log(`Updated repository ${repositoryId} with detected info: ${repoInfo.name}`);
@@ -644,20 +681,17 @@ export async function PUT(request: Request) {
     }
 
     const repositories = await loadRepositories();
-    const repoIndex = repositories.findIndex(repo => repo.id === id);
-    
+    const repoIndex = repositories.findIndex((repo) => repo.id === id);
+
     if (repoIndex === -1) {
-      return NextResponse.json(
-        { success: false, error: 'Repository not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ success: false, error: 'Repository not found' }, { status: 404 });
     }
 
     // Check for duplicate names or URLs (excluding current repo)
-    const existingRepo = repositories.find(repo => 
-      repo.id !== id && (repo.name === name || repo.gitUrl === gitUrl)
+    const existingRepo = repositories.find(
+      (repo) => repo.id !== id && (repo.name === name || repo.gitUrl === gitUrl)
     );
-    
+
     if (existingRepo) {
       return NextResponse.json(
         { success: false, error: 'Repository with this name or URL already exists' },
@@ -673,7 +707,7 @@ export async function PUT(request: Request) {
       branch: branch || repositories[repoIndex].branch,
       description: description || repositories[repoIndex].description,
       languages: Array.isArray(languages) ? languages : repositories[repoIndex].languages,
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
     };
 
     await saveRepositories(repositories);
@@ -681,7 +715,7 @@ export async function PUT(request: Request) {
     return NextResponse.json({
       success: true,
       message: 'Repository updated successfully',
-      repository: repositories[repoIndex]
+      repository: repositories[repoIndex],
     });
   } catch (error) {
     console.error('Error updating repository:', error);
@@ -706,13 +740,10 @@ export async function DELETE(request: Request) {
     }
 
     const repositories = await loadRepositories();
-    const repoIndex = repositories.findIndex(repo => repo.id === id);
-    
+    const repoIndex = repositories.findIndex((repo) => repo.id === id);
+
     if (repoIndex === -1) {
-      return NextResponse.json(
-        { success: false, error: 'Repository not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ success: false, error: 'Repository not found' }, { status: 404 });
     }
 
     const removedRepo = repositories.splice(repoIndex, 1)[0];
@@ -724,7 +755,7 @@ export async function DELETE(request: Request) {
     return NextResponse.json({
       success: true,
       message: 'Repository deleted successfully',
-      repository: removedRepo
+      repository: removedRepo,
     });
   } catch (error) {
     console.error('Error deleting repository:', error);

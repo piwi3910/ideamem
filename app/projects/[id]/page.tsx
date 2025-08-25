@@ -24,7 +24,7 @@ import {
   MagnifyingGlassIcon,
   ChartBarIcon,
   BoltIcon,
-  GlobeAltIcon
+  GlobeAltIcon,
 } from '@heroicons/react/24/outline';
 import { twMerge } from 'tailwind-merge';
 import Link from 'next/link';
@@ -79,19 +79,19 @@ export default function ProjectDetailPage() {
   const params = useParams();
   const router = useRouter();
   const projectId = params.id as string;
-  
+
   const [project, setProject] = useState<Project | null>(null);
   const [indexingJob, setIndexingJob] = useState<IndexingJob | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
+
   // Modal states
   const [showTokenModal, setShowTokenModal] = useState(false);
   const [showConnectionModal, setShowConnectionModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showWebhookModal, setShowWebhookModal] = useState(false);
   const [selectedClient, setSelectedClient] = useState<'claude-code' | 'gemini'>('claude-code');
-  
+
   // Webhook state
   const [webhookInfo, setWebhookInfo] = useState<{
     webhookUrl: string;
@@ -102,7 +102,7 @@ export default function ProjectDetailPage() {
     lastWebhookAuthor?: string;
   }>({
     webhookUrl: '',
-    webhookEnabled: false
+    webhookEnabled: false,
   });
 
   // Scheduled indexing state
@@ -115,7 +115,7 @@ export default function ProjectDetailPage() {
   }>({
     enabled: false,
     interval: 60,
-    branch: 'main'
+    branch: 'main',
   });
 
   useEffect(() => {
@@ -152,7 +152,7 @@ export default function ProjectDetailPage() {
         const data = await response.json();
         const job = data.jobs[projectId];
         setIndexingJob(job || null);
-        
+
         // If job completed, refresh project data
         if (!job && indexingJob) {
           await loadProject();
@@ -166,7 +166,7 @@ export default function ProjectDetailPage() {
   const startIndexing = async () => {
     try {
       const response = await fetch(`/api/projects/${projectId}/index`, {
-        method: 'POST'
+        method: 'POST',
       });
 
       if (response.ok) {
@@ -181,7 +181,7 @@ export default function ProjectDetailPage() {
   const stopIndexing = async () => {
     try {
       const response = await fetch(`/api/projects/${projectId}/index`, {
-        method: 'DELETE'
+        method: 'DELETE',
       });
 
       if (response.ok) {
@@ -196,7 +196,7 @@ export default function ProjectDetailPage() {
   const regenerateToken = async () => {
     try {
       const response = await fetch(`/api/projects/${projectId}/token`, {
-        method: 'POST'
+        method: 'POST',
       });
 
       if (response.ok) {
@@ -211,7 +211,7 @@ export default function ProjectDetailPage() {
   const deleteProject = async () => {
     try {
       const response = await fetch(`/api/projects/${projectId}`, {
-        method: 'DELETE'
+        method: 'DELETE',
       });
 
       if (response.ok) {
@@ -239,7 +239,7 @@ export default function ProjectDetailPage() {
       const response = await fetch(`/api/projects/${projectId}/webhook`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled: !webhookInfo.webhookEnabled })
+        body: JSON.stringify({ enabled: !webhookInfo.webhookEnabled }),
       });
 
       if (response.ok) {
@@ -262,7 +262,7 @@ export default function ProjectDetailPage() {
           interval: data.scheduledIndexingInterval || 60,
           branch: data.scheduledIndexingBranch || 'main',
           lastRun: data.lastScheduledIndexingAt,
-          nextRun: data.scheduledIndexingNextRun
+          nextRun: data.scheduledIndexingNextRun,
         });
       }
     } catch (error) {
@@ -278,8 +278,8 @@ export default function ProjectDetailPage() {
         body: JSON.stringify({
           enabled,
           intervalMinutes: enabled ? interval || scheduledIndexingInfo.interval : undefined,
-          branch: branch || scheduledIndexingInfo.branch
-        })
+          branch: branch || scheduledIndexingInfo.branch,
+        }),
       });
       if (response.ok) {
         await loadScheduledIndexingInfo();
@@ -309,43 +309,50 @@ export default function ProjectDetailPage() {
 
   const getStatusText = (status: Project['indexStatus']) => {
     switch (status) {
-      case 'COMPLETED': return 'Indexed';
-      case 'ERROR': return 'Failed';
-      case 'INDEXING': return 'Indexing';
-      default: return 'Idle';
+      case 'COMPLETED':
+        return 'Indexed';
+      case 'ERROR':
+        return 'Failed';
+      case 'INDEXING':
+        return 'Indexing';
+      default:
+        return 'Idle';
     }
   };
 
   const generateConnectionCommand = (client: 'claude-code' | 'gemini') => {
     if (!project) return { title: '', description: '', command: '' };
-    
+
     const serverUrl = `${window.location.origin}/api/mcp`;
     const serverName = `ideamem-${project.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
-    
+
     switch (client) {
       case 'claude-code':
         return {
           title: 'Claude Code CLI Command',
           description: 'Run this command in your terminal to add the MCP server:',
-          command: `claude mcp add --transport http ${serverName} ${serverUrl} --header "Authorization: Bearer ${project.token}" --header "X-Project-ID: ${project.id}"`
+          command: `claude mcp add --transport http ${serverName} ${serverUrl} --header "Authorization: Bearer ${project.token}"`,
         };
-      
+
       case 'gemini':
         return {
-          title: 'Gemini Configuration', 
+          title: 'Gemini Configuration',
           description: 'Add this MCP server configuration for Gemini:',
-          command: JSON.stringify({
-            name: serverName,
-            description: `Semantic memory for ${project.name}`,
-            transport: {
-              type: "http",
-              url: serverUrl,
-              headers: {
-                "Authorization": `Bearer ${project.token}`,
-                "X-Project-ID": project.id
-              }
-            }
-          }, null, 2)
+          command: JSON.stringify(
+            {
+              name: serverName,
+              description: `Semantic memory for ${project.name}`,
+              transport: {
+                type: 'http',
+                url: serverUrl,
+                headers: {
+                  Authorization: `Bearer ${project.token}`,
+                },
+              },
+            },
+            null,
+            2
+          ),
         };
     }
   };
@@ -408,10 +415,8 @@ export default function ProjectDetailPage() {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          
           {/* Project Information */}
           <div className="lg:col-span-2 space-y-6">
-            
             {/* Basic Info Card */}
             <div className="card">
               <h2 className="text-xl font-semibold text-gray-900 mb-4">Project Information</h2>
@@ -420,19 +425,19 @@ export default function ProjectDetailPage() {
                   <label className="label">Name</label>
                   <p className="text-gray-900">{project.name}</p>
                 </div>
-                
+
                 {project.description && (
                   <div>
                     <label className="label">Description</label>
                     <p className="text-gray-900">{project.description}</p>
                   </div>
                 )}
-                
+
                 <div>
                   <label className="label">Git Repository</label>
                   <p className="text-gray-900 break-all">{project.gitRepo}</p>
                 </div>
-                
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="label">Created</label>
@@ -441,7 +446,7 @@ export default function ProjectDetailPage() {
                       {formatDate(project.createdAt)}
                     </div>
                   </div>
-                  
+
                   {project.indexedAt && (
                     <div>
                       <label className="label">Last Indexed</label>
@@ -461,7 +466,8 @@ export default function ProjectDetailPage() {
                       </div>
                       {project.lastWebhookCommit && (
                         <p className="text-sm text-gray-600 ml-6">
-                          Commit {project.lastWebhookCommit} by {project.lastWebhookAuthor} on {project.lastWebhookBranch}
+                          Commit {project.lastWebhookCommit} by {project.lastWebhookAuthor} on{' '}
+                          {project.lastWebhookBranch}
                         </p>
                       )}
                     </div>
@@ -473,7 +479,7 @@ export default function ProjectDetailPage() {
             {/* Query Metrics Card */}
             <div className="card">
               <h2 className="text-xl font-semibold text-gray-900 mb-4">Query Activity</h2>
-              
+
               {project.totalQueries && project.totalQueries > 0 ? (
                 <>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
@@ -482,25 +488,27 @@ export default function ProjectDetailPage() {
                       <p className="text-2xl font-bold text-purple-600">{project.totalQueries}</p>
                       <p className="text-sm text-gray-600">Total Queries</p>
                     </div>
-                    
+
                     <div className="text-center p-4 bg-blue-50 rounded-lg">
                       <ChartBarIcon className="h-8 w-8 text-blue-600 mx-auto mb-2" />
-                      <p className="text-2xl font-bold text-blue-600">{project.queriesThisWeek || 0}</p>
+                      <p className="text-2xl font-bold text-blue-600">
+                        {project.queriesThisWeek || 0}
+                      </p>
                       <p className="text-sm text-gray-600">This Week</p>
                     </div>
-                    
+
                     <div className="text-center p-4 bg-green-50 rounded-lg">
                       <ChartBarIcon className="h-8 w-8 text-green-600 mx-auto mb-2" />
-                      <p className="text-2xl font-bold text-green-600">{project.queriesThisMonth || 0}</p>
+                      <p className="text-2xl font-bold text-green-600">
+                        {project.queriesThisMonth || 0}
+                      </p>
                       <p className="text-sm text-gray-600">This Month</p>
                     </div>
                   </div>
-                  
+
                   {project.lastQueryAt && (
                     <div className="text-center text-gray-600">
-                      <p className="text-sm">
-                        Last query: {formatDate(project.lastQueryAt)}
-                      </p>
+                      <p className="text-sm">Last query: {formatDate(project.lastQueryAt)}</p>
                     </div>
                   )}
                 </>
@@ -508,7 +516,9 @@ export default function ProjectDetailPage() {
                 <div className="text-center py-8">
                   <MagnifyingGlassIcon className="h-12 w-12 text-gray-300 mx-auto mb-3" />
                   <p className="text-gray-600">No queries received yet</p>
-                  <p className="text-sm text-gray-500 mt-1">Queries will appear here once your MCP client starts using this project</p>
+                  <p className="text-sm text-gray-500 mt-1">
+                    Queries will appear here once your MCP client starts using this project
+                  </p>
                 </div>
               )}
             </div>
@@ -516,16 +526,18 @@ export default function ProjectDetailPage() {
             {/* Indexing Status Card */}
             <div className="card">
               <h2 className="text-xl font-semibold text-gray-900 mb-4">Indexing Status</h2>
-              
+
               <div className="flex items-center mb-4">
                 {getStatusIcon(project.indexStatus)}
-                <span className={twMerge(
-                  "ml-3 text-lg font-medium",
-                  project.indexStatus === 'COMPLETED' && 'text-green-600',
-                  project.indexStatus === 'ERROR' && 'text-red-600',
-                  project.indexStatus === 'INDEXING' && 'text-blue-600',
-                  (project.indexStatus === 'IDLE') && 'text-gray-500'
-                )}>
+                <span
+                  className={twMerge(
+                    'ml-3 text-lg font-medium',
+                    project.indexStatus === 'COMPLETED' && 'text-green-600',
+                    project.indexStatus === 'ERROR' && 'text-red-600',
+                    project.indexStatus === 'INDEXING' && 'text-blue-600',
+                    project.indexStatus === 'IDLE' && 'text-gray-500'
+                  )}
+                >
                   {getStatusText(project.indexStatus)}
                 </span>
               </div>
@@ -533,13 +545,15 @@ export default function ProjectDetailPage() {
               {project.indexStatus === 'INDEXING' && indexingJob && (
                 <div className="mb-4">
                   <div className="w-full bg-gray-200 rounded-full h-3 mb-2">
-                    <div 
+                    <div
                       className="bg-blue-600 h-3 rounded-full transition-all duration-300"
                       style={{ width: `${indexingJob.progress}%` }}
                     />
                   </div>
                   <p className="text-sm text-gray-600">
-                    {indexingJob.currentFile ? `Processing: ${indexingJob.currentFile}` : `${indexingJob.processedFiles}/${indexingJob.totalFiles} files`}
+                    {indexingJob.currentFile
+                      ? `Processing: ${indexingJob.currentFile}`
+                      : `${indexingJob.processedFiles}/${indexingJob.totalFiles} files`}
                   </p>
                 </div>
               )}
@@ -590,7 +604,6 @@ export default function ProjectDetailPage() {
 
           {/* Sidebar Actions */}
           <div className="space-y-6">
-            
             {/* Token Management */}
             <div className="card">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Authentication Token</h3>
@@ -627,17 +640,19 @@ export default function ProjectDetailPage() {
               <p className="text-gray-600 text-sm mb-4">
                 Automatically re-index when code changes are pushed to your repository.
               </p>
-              
+
               <div className="flex items-center justify-between mb-4">
                 <span className="text-sm font-medium">Webhook Status</span>
-                <span className={twMerge(
-                  "text-sm font-medium",
-                  webhookInfo.webhookEnabled ? "text-green-600" : "text-gray-500"
-                )}>
-                  {webhookInfo.webhookEnabled ? "Enabled" : "Disabled"}
+                <span
+                  className={twMerge(
+                    'text-sm font-medium',
+                    webhookInfo.webhookEnabled ? 'text-green-600' : 'text-gray-500'
+                  )}
+                >
+                  {webhookInfo.webhookEnabled ? 'Enabled' : 'Disabled'}
                 </span>
               </div>
-              
+
               <button
                 onClick={() => setShowWebhookModal(true)}
                 className="btn bg-orange-100 text-orange-700 hover:bg-orange-200 w-full flex items-center justify-center gap-2"
@@ -653,37 +668,38 @@ export default function ProjectDetailPage() {
               <p className="text-gray-600 text-sm mb-4">
                 Automatically check for changes and re-index when webhooks aren't available.
               </p>
-              
+
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium">Status</span>
-                  <span className={twMerge(
-                    "text-sm font-medium",
-                    scheduledIndexingInfo.enabled ? "text-green-600" : "text-gray-500"
-                  )}>
-                    {scheduledIndexingInfo.enabled ? "Enabled" : "Disabled"}
+                  <span
+                    className={twMerge(
+                      'text-sm font-medium',
+                      scheduledIndexingInfo.enabled ? 'text-green-600' : 'text-gray-500'
+                    )}
+                  >
+                    {scheduledIndexingInfo.enabled ? 'Enabled' : 'Disabled'}
                   </span>
                 </div>
-                
+
                 {scheduledIndexingInfo.enabled && (
                   <>
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-medium">Interval</span>
                       <span className="text-sm text-gray-600">
-                        {scheduledIndexingInfo.interval >= 60 
+                        {scheduledIndexingInfo.interval >= 60
                           ? `${Math.floor(scheduledIndexingInfo.interval / 60)}h ${scheduledIndexingInfo.interval % 60}m`
-                          : `${scheduledIndexingInfo.interval}m`
-                        }
+                          : `${scheduledIndexingInfo.interval}m`}
                       </span>
                     </div>
-                    
+
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-medium">Branch</span>
                       <span className="text-sm text-gray-600 font-mono">
                         {scheduledIndexingInfo.branch}
                       </span>
                     </div>
-                    
+
                     {scheduledIndexingInfo.nextRun && (
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-medium">Next Run</span>
@@ -692,7 +708,7 @@ export default function ProjectDetailPage() {
                         </span>
                       </div>
                     )}
-                    
+
                     {scheduledIndexingInfo.lastRun && (
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-medium">Last Run</span>
@@ -703,14 +719,19 @@ export default function ProjectDetailPage() {
                     )}
                   </>
                 )}
-                
+
                 <div className="space-y-2">
                   {!scheduledIndexingInfo.enabled ? (
                     <div className="space-y-2">
-                      <select 
+                      <select
                         className="input text-sm"
                         value={scheduledIndexingInfo.interval}
-                        onChange={(e) => setScheduledIndexingInfo(prev => ({ ...prev, interval: parseInt(e.target.value) }))}
+                        onChange={(e) =>
+                          setScheduledIndexingInfo((prev) => ({
+                            ...prev,
+                            interval: parseInt(e.target.value),
+                          }))
+                        }
                       >
                         <option value={5}>Every 5 minutes</option>
                         <option value={15}>Every 15 minutes</option>
@@ -726,7 +747,12 @@ export default function ProjectDetailPage() {
                         className="input text-sm"
                         placeholder="Branch (default: main)"
                         value={scheduledIndexingInfo.branch}
-                        onChange={(e) => setScheduledIndexingInfo(prev => ({ ...prev, branch: e.target.value || 'main' }))}
+                        onChange={(e) =>
+                          setScheduledIndexingInfo((prev) => ({
+                            ...prev,
+                            branch: e.target.value || 'main',
+                          }))
+                        }
                       />
                       <button
                         onClick={() => updateScheduledIndexing(true)}
@@ -770,12 +796,12 @@ export default function ProjectDetailPage() {
                     <hr className="border-gray-200" />
                   </>
                 )}
-                
+
                 <div className="flex justify-between">
                   <span className="text-gray-600">Total Queries</span>
                   <span className="font-medium">{project.totalQueries || 0}</span>
                 </div>
-                
+
                 {project.totalQueries && project.totalQueries > 0 && (
                   <>
                     <div className="flex justify-between">
@@ -788,7 +814,7 @@ export default function ProjectDetailPage() {
                     </div>
                   </>
                 )}
-                
+
                 {!project.totalQueries || project.totalQueries === 0 ? (
                   <p className="text-sm text-gray-500 mt-2">No queries yet</p>
                 ) : null}
@@ -806,15 +832,13 @@ export default function ProjectDetailPage() {
             <Dialog.Title className="text-xl font-semibold text-gray-900 mb-4">
               Authentication Token
             </Dialog.Title>
-            
+
             <p className="text-gray-600 mb-4">
               Use this token to authenticate MCP clients for "{project.name}".
             </p>
-            
+
             <div className="bg-gray-50 rounded-lg p-4 mb-4">
-              <code className="text-sm font-mono text-gray-900 break-all">
-                {project.token}
-              </code>
+              <code className="text-sm font-mono text-gray-900 break-all">{project.token}</code>
             </div>
 
             <div className="flex gap-3 mb-4">
@@ -836,11 +860,8 @@ export default function ProjectDetailPage() {
                 Regenerate
               </button>
             </div>
-            
-            <button
-              onClick={() => setShowTokenModal(false)}
-              className="btn btn-primary w-full"
-            >
+
+            <button onClick={() => setShowTokenModal(false)} className="btn btn-primary w-full">
               Close
             </button>
           </Dialog.Panel>
@@ -855,11 +876,11 @@ export default function ProjectDetailPage() {
             <Dialog.Title className="text-xl font-semibold text-gray-900 mb-4">
               MCP Connection Configuration
             </Dialog.Title>
-            
+
             <p className="text-gray-600 mb-6">
               Configure your MCP client to connect to the "{project.name}" project.
             </p>
-            
+
             {/* Client Selection */}
             <div className="mb-6">
               <label className="label">Select MCP Client</label>
@@ -881,7 +902,7 @@ export default function ProjectDetailPage() {
                     <h3 className="text-lg font-medium text-gray-900 mb-2">{config.title}</h3>
                     <p className="text-sm text-gray-600">{config.description}</p>
                   </div>
-                  
+
                   <div className="bg-gray-50 rounded-lg p-4 mb-4 max-h-96 overflow-y-auto">
                     <pre className="text-xs font-mono text-gray-900 whitespace-pre-wrap break-all">
                       {config.command}
@@ -918,9 +939,10 @@ export default function ProjectDetailPage() {
             <Dialog.Title className="text-xl font-semibold text-gray-900 mb-4">
               Delete Project
             </Dialog.Title>
-            
+
             <p className="text-gray-600 mb-6">
-              Are you sure you want to delete "{project.name}"? This will permanently delete the project and all its indexed data. This action cannot be undone.
+              Are you sure you want to delete "{project.name}"? This will permanently delete the
+              project and all its indexed data. This action cannot be undone.
             </p>
 
             <div className="flex gap-3">
@@ -930,10 +952,7 @@ export default function ProjectDetailPage() {
               >
                 Cancel
               </button>
-              <button
-                onClick={deleteProject}
-                className="btn btn-danger flex-1"
-              >
+              <button onClick={deleteProject} className="btn btn-danger flex-1">
                 Delete Project
               </button>
             </div>
@@ -949,11 +968,12 @@ export default function ProjectDetailPage() {
             <Dialog.Title className="text-xl font-semibold text-gray-900 mb-4">
               Webhook Auto Re-indexing Setup
             </Dialog.Title>
-            
+
             <p className="text-gray-600 mb-6">
-              Configure your Git hosting platform to automatically re-index "{project?.name}" when code changes are pushed.
+              Configure your Git hosting platform to automatically re-index "{project?.name}" when
+              code changes are pushed.
             </p>
-            
+
             {/* Webhook Status Toggle */}
             <div className="mb-6 p-4 bg-gray-50 rounded-lg">
               <div className="flex items-center justify-between mb-4">
@@ -964,26 +984,28 @@ export default function ProjectDetailPage() {
                 <button
                   onClick={toggleWebhook}
                   className={twMerge(
-                    "relative inline-flex h-6 w-11 items-center rounded-full transition-colors",
-                    webhookInfo.webhookEnabled ? "bg-green-600" : "bg-gray-200"
+                    'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                    webhookInfo.webhookEnabled ? 'bg-green-600' : 'bg-gray-200'
                   )}
                 >
                   <span
                     className={twMerge(
-                      "inline-block h-4 w-4 transform rounded-full bg-white transition-transform",
-                      webhookInfo.webhookEnabled ? "translate-x-6" : "translate-x-1"
+                      'inline-block h-4 w-4 transform rounded-full bg-white transition-transform',
+                      webhookInfo.webhookEnabled ? 'translate-x-6' : 'translate-x-1'
                     )}
                   />
                 </button>
               </div>
-              
+
               <div className="flex items-center text-sm">
-                <div className={twMerge(
-                  "flex items-center gap-2",
-                  webhookInfo.webhookEnabled ? "text-green-600" : "text-gray-500"
-                )}>
+                <div
+                  className={twMerge(
+                    'flex items-center gap-2',
+                    webhookInfo.webhookEnabled ? 'text-green-600' : 'text-gray-500'
+                  )}
+                >
                   <BoltIcon className="h-4 w-4" />
-                  {webhookInfo.webhookEnabled ? "Webhook Enabled" : "Webhook Disabled"}
+                  {webhookInfo.webhookEnabled ? 'Webhook Enabled' : 'Webhook Disabled'}
                 </div>
               </div>
             </div>
@@ -1011,7 +1033,7 @@ export default function ProjectDetailPage() {
             {/* Setup Instructions */}
             <div className="mb-6">
               <h3 className="text-lg font-medium text-gray-900 mb-3">Setup Instructions</h3>
-              
+
               <div className="space-y-4">
                 {/* GitHub Instructions */}
                 <div className="border border-gray-200 rounded-lg p-4">
@@ -1065,12 +1087,20 @@ export default function ProjectDetailPage() {
               <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
                 <h3 className="text-lg font-medium text-blue-900 mb-2">Last Webhook Activity</h3>
                 <div className="text-sm text-blue-700 space-y-1">
-                  <p><strong>Time:</strong> {formatDate(project.lastWebhookAt)}</p>
+                  <p>
+                    <strong>Time:</strong> {formatDate(project.lastWebhookAt)}
+                  </p>
                   {project.lastWebhookCommit && (
                     <>
-                      <p><strong>Commit:</strong> {project.lastWebhookCommit}</p>
-                      <p><strong>Branch:</strong> {project.lastWebhookBranch}</p>
-                      <p><strong>Author:</strong> {project.lastWebhookAuthor}</p>
+                      <p>
+                        <strong>Commit:</strong> {project.lastWebhookCommit}
+                      </p>
+                      <p>
+                        <strong>Branch:</strong> {project.lastWebhookBranch}
+                      </p>
+                      <p>
+                        <strong>Author:</strong> {project.lastWebhookAuthor}
+                      </p>
                     </>
                   )}
                 </div>
@@ -1078,10 +1108,7 @@ export default function ProjectDetailPage() {
             )}
 
             <div className="flex gap-3">
-              <button
-                onClick={() => setShowWebhookModal(false)}
-                className="btn btn-primary flex-1"
-              >
+              <button onClick={() => setShowWebhookModal(false)} className="btn btn-primary flex-1">
                 Close
               </button>
             </div>

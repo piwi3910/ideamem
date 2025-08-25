@@ -5,6 +5,7 @@ A professional Model Context Protocol (MCP) server for semantic memory operation
 ## 🚀 Features
 
 ### Core Functionality
+
 - **Semantic Code Search** - AST-based chunking for JavaScript/TypeScript with intelligent parsing
 - **Multi-format Support** - Code, documentation, configuration files, and more
 - **Project Isolation** - Separate semantic memory spaces per project with token-based authentication
@@ -13,12 +14,14 @@ A professional Model Context Protocol (MCP) server for semantic memory operation
 - **Professional Web UI** - Modern React dashboard with comprehensive project management
 
 ### MCP Protocol
+
 - **JSON-RPC 2.0 Compliant** - Full MCP protocol implementation
 - **Tool Discovery** - Automatic tool listing and capability negotiation
 - **Error Handling** - Comprehensive error boundaries with proper status codes
 - **Authentication** - Token-based per-project security
 
 ### Architecture
+
 - **Vector Database** - Qdrant integration for semantic embeddings
 - **Local LLM** - Ollama with `nomic-embed-text` model for embeddings
 - **Project Management** - Multi-tenant isolation with comprehensive metrics
@@ -41,15 +44,17 @@ A professional Model Context Protocol (MCP) server for semantic memory operation
 ### Prerequisites
 
 1. **Qdrant Vector Database**
+
    ```bash
    docker run -p 6333:6333 qdrant/qdrant
    ```
 
 2. **Ollama with embedding model**
+
    ```bash
    # Install Ollama
    curl -fsSL https://ollama.ai/install.sh | sh
-   
+
    # Pull the embedding model
    ollama pull nomic-embed-text
    ```
@@ -57,17 +62,20 @@ A professional Model Context Protocol (MCP) server for semantic memory operation
 ### Installation
 
 1. **Clone the repository**
+
    ```bash
    git clone https://github.com/your-username/ideamem.git
    cd ideamem
    ```
 
 2. **Install dependencies**
+
    ```bash
    pnpm install
    ```
 
 3. **Start the development server**
+
    ```bash
    pnpm dev
    ```
@@ -103,7 +111,7 @@ graph TB
         GM[Gemini]
         OC[Other Clients]
     end
-    
+
     subgraph "IdeaMem Server"
         WEB[Web Interface]
         API[MCP API Server]
@@ -111,34 +119,34 @@ graph TB
         IM[Indexing Manager]
         MM[Memory Manager]
     end
-    
+
     subgraph "External Services"
         QD[Qdrant Vector DB]
         OL[Ollama LLM]
         GR[Git Repositories]
     end
-    
+
     subgraph "Data Storage"
         PF[Projects JSON]
         JF[Jobs JSON]
         CF[Config JSON]
     end
-    
+
     CC --> API
     GM --> API
     OC --> API
-    
+
     WEB --> PM
     API --> MM
     PM --> IM
     IM --> GR
     MM --> QD
     MM --> OL
-    
+
     PM --> PF
     IM --> JF
     WEB --> CF
-    
+
     style API fill:#e1f5fe
     style MM fill:#f3e5f5
     style QD fill:#fff3e0
@@ -155,43 +163,43 @@ graph LR
         A[Admin Panel]
         T[Test Interface]
     end
-    
+
     subgraph "API Layer"
         MCP[MCP Protocol Handler]
         PR[Project Routes]
         AR[Admin Routes]
         IR[Indexing Routes]
     end
-    
+
     subgraph "Business Logic"
         PM[Project Manager]
         IM[Indexing Engine]
         MM[Memory System]
         QM[Query Metrics]
     end
-    
+
     subgraph "Data Layer"
         FS[File System Storage]
         VDB[Vector Database]
         LLM[Local LLM Service]
     end
-    
+
     D --> PR
     PD --> PR
     A --> AR
     T --> MCP
-    
+
     MCP --> MM
     PR --> PM
     AR --> PM
     IR --> IM
-    
+
     PM --> FS
     IM --> VDB
     MM --> VDB
     MM --> LLM
     QM --> FS
-    
+
     style MCP fill:#ffeb3b,color:#000
     style MM fill:#4caf50,color:#fff
     style VDB fill:#ff9800,color:#fff
@@ -207,13 +215,13 @@ sequenceDiagram
     participant Q as Qdrant DB
     participant O as Ollama
     participant P as Project Manager
-    
+
     Note over C,P: Project Setup
     C->>A: Create Project
     A->>P: Store Project + Generate Token
     P-->>A: Project Created
     A-->>C: Token & Project ID
-    
+
     Note over C,P: Code Indexing
     C->>A: Start Indexing
     A->>P: Clone Git Repository
@@ -224,7 +232,7 @@ sequenceDiagram
     Q-->>M: Storage Confirmed
     M-->>P: Files Processed
     P-->>A: Indexing Complete
-    
+
     Note over C,P: Semantic Search
     C->>A: memory.retrieve(query)
     A->>P: Track Query Metrics
@@ -272,6 +280,7 @@ ideamem/
 The main MCP protocol endpoint supporting JSON-RPC 2.0.
 
 **Headers:**
+
 - `Authorization: Bearer <token>` - Project authentication token
 - `X-Project-ID: <project-id>` - Project identifier
 - `Content-Type: application/json`
@@ -279,6 +288,7 @@ The main MCP protocol endpoint supporting JSON-RPC 2.0.
 **Supported Methods:**
 
 ##### `initialize`
+
 Initialize MCP connection and negotiate capabilities.
 
 ```json
@@ -293,6 +303,7 @@ Initialize MCP connection and negotiate capabilities.
 ```
 
 ##### `tools/list`
+
 List available memory tools.
 
 ```json
@@ -304,6 +315,7 @@ List available memory tools.
 ```
 
 ##### `tools/call` - memory.ingest
+
 Store and index content in semantic memory.
 
 ```json
@@ -326,6 +338,7 @@ Store and index content in semantic memory.
 ```
 
 ##### `tools/call` - memory.retrieve
+
 Perform semantic search across indexed content.
 
 ```json
@@ -349,6 +362,7 @@ Perform semantic search across indexed content.
 ```
 
 ##### `tools/call` - memory.delete_source
+
 Delete all content from a specific source.
 
 ```json
@@ -368,6 +382,7 @@ Delete all content from a specific source.
 ```
 
 ##### `tools/call` - memory.list_projects
+
 List all available project identifiers.
 
 ```json
@@ -383,6 +398,7 @@ List all available project identifiers.
 ```
 
 ##### `tools/call` - indexing.index_file
+
 Index a single file in a project repository before git push operations.
 
 ```json
@@ -402,6 +418,7 @@ Index a single file in a project repository before git push operations.
 ```
 
 ##### `tools/call` - indexing.reindex_file
+
 Reindex an existing file, removing old vectors and creating new ones.
 
 ```json
@@ -421,6 +438,7 @@ Reindex an existing file, removing old vectors and creating new ones.
 ```
 
 ##### `tools/call` - indexing.full_reindex
+
 Perform a complete reindex of an entire project repository.
 
 ```json
@@ -439,6 +457,7 @@ Perform a complete reindex of an entire project repository.
 ```
 
 ##### `tools/call` - indexing.check_and_index
+
 Check for new git commits and perform incremental indexing if changes are found.
 
 ```json
@@ -459,6 +478,7 @@ Check for new git commits and perform incremental indexing if changes are found.
 ### Web API Endpoints
 
 #### Projects
+
 - `GET /api/projects` - List all projects
 - `POST /api/projects` - Create new project
 - `GET /api/projects/[id]` - Get project details
@@ -470,17 +490,21 @@ Check for new git commits and perform incremental indexing if changes are found.
 - `POST /api/projects/[id]/webhook` - Enable/disable webhook
 
 #### Admin
+
 - `GET/POST /api/admin/config` - Service configuration
 - `POST /api/admin/health` - Health checks
 - `POST /api/admin/pull-model` - Pull Ollama models
 
 #### Indexing
+
 - `GET /api/projects/indexing/status` - Get active indexing jobs
 
 #### Webhooks
+
 - `POST /api/webhooks/[projectId]` - Receive Git platform webhooks for automatic re-indexing
 
 #### Scheduled Indexing
+
 - `GET /api/projects/[id]/schedule` - Get scheduled indexing configuration
 - `POST /api/projects/[id]/schedule` - Configure scheduled indexing settings
 - `POST /api/scheduler/run` - Manual scheduler execution for all projects
@@ -489,12 +513,14 @@ Check for new git commits and perform incremental indexing if changes are found.
 ## 🖥️ Web Interface
 
 ### Dashboard (`/dashboard`)
+
 - **Project Overview** - Grid view of all projects with status indicators
 - **Quick Actions** - Start/stop indexing, view details
 - **Status Monitoring** - Real-time indexing progress with file counts
 - **Project Creation** - Modal form for new project setup
 
 ### Project Details (`/projects/[id]`)
+
 - **Comprehensive Information** - Git repo, creation dates, indexing history
 - **Token Management** - View, copy, and regenerate authentication tokens
 - **MCP Connection Setup** - Generate connection commands for Claude Code and Gemini
@@ -505,6 +531,7 @@ Check for new git commits and perform incremental indexing if changes are found.
 - **Scheduled Indexing** - Set up periodic incremental indexing with customizable intervals
 
 ### Admin Panel (`/admin`)
+
 - **Service Configuration** - Qdrant and Ollama connection settings
 - **Health Monitoring** - Service status and connectivity checks
 - **Model Management** - Pull and verify Ollama embedding models
@@ -512,6 +539,7 @@ Check for new git commits and perform incremental indexing if changes are found.
 - **System Status** - Overall system health dashboard
 
 ### Test Interface (`/test-mcp`)
+
 - **Protocol Testing** - Interactive MCP protocol validation
 - **Tool Execution** - Test memory operations directly
 - **Debug Interface** - Raw JSON-RPC request/response viewer
@@ -530,6 +558,7 @@ The system uses `config.json` for service configuration:
 ```
 
 Configuration can be updated via:
+
 1. Admin web interface (`/admin`)
 2. Direct API calls to `/api/admin/config`
 3. Manual `config.json` editing (requires restart)
@@ -549,6 +578,7 @@ DATA_DIR=./data
 ### Project Structure
 
 Each project maintains:
+
 - **Unique ID** - UUID-based project identifier
 - **Authentication Token** - Secure access token (`idm_` prefixed)
 - **Git Repository** - Source repository URL
@@ -563,14 +593,16 @@ Scheduled indexing provides automatic incremental indexing for environments wher
 #### Configuration Options
 
 **Per-Project Settings:**
+
 - **Enable/Disable** - Toggle scheduled indexing for individual projects
 - **Interval** - Choose from 5 minutes to 24 hours
 - **Branch** - Specify which branch to monitor (default: main)
 - **Next Run Time** - Automatically calculated based on interval
 
 **Available Intervals:**
+
 - Every 5 minutes
-- Every 15 minutes  
+- Every 15 minutes
 - Every 30 minutes
 - Every hour
 - Every 2 hours
@@ -588,48 +620,52 @@ Scheduled indexing provides automatic incremental indexing for environments wher
 #### Automation Setup
 
 **Option 1: Manual Execution (Admin Panel)**
+
 - Use `/admin` interface to manually trigger scheduler
 - Good for testing and occasional use
 
 **Option 2: Cron Job (Recommended)**
+
 ```bash
 # Add to crontab for every 5 minutes
 */5 * * * * curl -X POST http://your-domain.com/api/scheduler/run
 
-# Add to crontab for every 15 minutes  
+# Add to crontab for every 15 minutes
 */15 * * * * curl -X POST http://your-domain.com/api/scheduler/run
 ```
 
 **Option 3: Docker/Kubernetes CronJob**
+
 ```yaml
 apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: ideamem-scheduler
 spec:
-  schedule: "*/10 * * * *"  # Every 10 minutes
+  schedule: '*/10 * * * *' # Every 10 minutes
   jobTemplate:
     spec:
       template:
         spec:
           containers:
-          - name: scheduler
-            image: curlimages/curl
-            command: 
-            - curl
-            - -X
-            - POST
-            - http://ideamem-service/api/scheduler/run
+            - name: scheduler
+              image: curlimages/curl
+              command:
+                - curl
+                - -X
+                - POST
+                - http://ideamem-service/api/scheduler/run
           restartPolicy: OnFailure
 ```
 
 **Option 4: GitHub Actions (for public repos)**
+
 ```yaml
 name: IdeaMem Scheduler
 on:
   schedule:
-    - cron: '*/10 * * * *'  # Every 10 minutes
-  workflow_dispatch:        # Manual trigger
+    - cron: '*/10 * * * *' # Every 10 minutes
+  workflow_dispatch: # Manual trigger
 
 jobs:
   trigger-indexing:
@@ -728,6 +764,7 @@ CMD ["npm", "start"]
 Ensure these services are running:
 
 1. **Qdrant Vector Database**
+
    ```bash
    docker run -d -p 6333:6333 qdrant/qdrant
    ```
@@ -754,21 +791,25 @@ Ensure these services are running:
 ### Common Issues
 
 #### Indexing Stuck in Progress
+
 - **Symptom**: Status shows "Indexing" but progress bar disappears
 - **Solution**: Fixed in latest version with smart status detection
 - **Verification**: Check browser console for "Refreshing projects" logs
 
 #### MCP Connection Fails
+
 - **Symptom**: Claude Code reports connection errors
 - **Solution**: Verify token format and headers
 - **Command**: Use exact format from Connection Setup modal
 
 #### Qdrant Connection Issues
+
 - **Symptom**: "Failed to connect to Qdrant" in admin panel
 - **Solution**: Verify Qdrant is running on correct port
 - **Check**: `curl http://localhost:6333/collections`
 
 #### Ollama Model Missing
+
 - **Symptom**: "Model not found" errors during indexing
 - **Solution**: Pull the embedding model
 - **Command**: `ollama pull nomic-embed-text`

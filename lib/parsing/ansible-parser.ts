@@ -12,33 +12,35 @@ export class AnsibleParser extends BaseParser {
         return {
           chunks: [],
           success: false,
-          error: 'Not Ansible content'
+          error: 'Not Ansible content',
         };
       }
 
       const parsed = yaml.load(content) as any;
       const chunks = this.extractSemanticChunks(parsed, content, source);
-      
+
       return {
         chunks,
-        success: true
+        success: true,
       };
     } catch (error) {
       return {
-        chunks: [{
-          type: 'config',
-          name: source ? source.replace(/.*\//, '').replace(/\.ya?ml$/, '') : 'ansible-content',
-          content,
-          startLine: 1,
-          endLine: content.split('\n').length,
-          metadata: {
-            language: this.language,
-            dependencies: []
-          }
-        }],
+        chunks: [
+          {
+            type: 'config',
+            name: source ? source.replace(/.*\//, '').replace(/\.ya?ml$/, '') : 'ansible-content',
+            content,
+            startLine: 1,
+            endLine: content.split('\n').length,
+            metadata: {
+              language: this.language,
+              dependencies: [],
+            },
+          },
+        ],
         success: false,
         error: error instanceof Error ? error.message : 'Ansible parsing failed',
-        fallbackUsed: true
+        fallbackUsed: true,
       };
     }
   }
@@ -46,30 +48,48 @@ export class AnsibleParser extends BaseParser {
   private isAnsibleContent(content: string, source?: string): boolean {
     // Check file path indicators
     if (source) {
-      if (source.includes('playbook') || 
-          source.includes('ansible') || 
-          source.includes('roles/') ||
-          source.includes('tasks/') ||
-          source.includes('handlers/') ||
-          source.includes('vars/') ||
-          source.includes('defaults/') ||
-          source.includes('meta/')) {
+      if (
+        source.includes('playbook') ||
+        source.includes('ansible') ||
+        source.includes('roles/') ||
+        source.includes('tasks/') ||
+        source.includes('handlers/') ||
+        source.includes('vars/') ||
+        source.includes('defaults/') ||
+        source.includes('meta/')
+      ) {
         return true;
       }
     }
 
     // Check content indicators
     const ansibleKeywords = [
-      'hosts:', 'become:', 'tasks:', 'handlers:', 'vars:', 'defaults:',
-      'roles:', 'name:', 'ansible_', 'gather_facts:', 'remote_user:',
-      'connection:', 'strategy:', 'serial:', 'max_fail_percentage:'
+      'hosts:',
+      'become:',
+      'tasks:',
+      'handlers:',
+      'vars:',
+      'defaults:',
+      'roles:',
+      'name:',
+      'ansible_',
+      'gather_facts:',
+      'remote_user:',
+      'connection:',
+      'strategy:',
+      'serial:',
+      'max_fail_percentage:',
     ];
 
     const lowerContent = content.toLowerCase();
-    return ansibleKeywords.some(keyword => lowerContent.includes(keyword));
+    return ansibleKeywords.some((keyword) => lowerContent.includes(keyword));
   }
 
-  private extractSemanticChunks(obj: any, originalContent: string, source?: string): SemanticChunk[] {
+  private extractSemanticChunks(
+    obj: any,
+    originalContent: string,
+    source?: string
+  ): SemanticChunk[] {
     const chunks: SemanticChunk[] = [];
     const lines = originalContent.split('\n');
 
@@ -80,7 +100,10 @@ export class AnsibleParser extends BaseParser {
       chunks.push(...this.parseHandlersFile(obj, lines));
     } else if (source?.includes('main.yml') && source.includes('meta/')) {
       chunks.push(...this.parseMetaFile(obj, lines));
-    } else if (source?.includes('main.yml') && (source.includes('vars/') || source.includes('defaults/'))) {
+    } else if (
+      source?.includes('main.yml') &&
+      (source.includes('vars/') || source.includes('defaults/'))
+    ) {
       chunks.push(...this.parseVarsFile(obj, lines));
     } else if (Array.isArray(obj)) {
       // Playbook file
@@ -101,20 +124,15 @@ export class AnsibleParser extends BaseParser {
         const playName = play.name || `play-${playIndex}`;
         const playStart = this.findPlayStart(lines, play, playIndex);
         const playEnd = this.findPlayEnd(lines, playStart, playIndex, playbook.length);
-        
+
         const playContent = this.extractPlayContent(play);
-        
-        chunks.push(this.createChunk(
-          'play',
-          playName,
-          playContent,
-          playStart,
-          playEnd,
-          {
+
+        chunks.push(
+          this.createChunk('play', playName, playContent, playStart, playEnd, {
             dependencies: this.extractPlayDependencies(play),
-            exports: [playName]
-          }
-        ));
+            exports: [playName],
+          })
+        );
 
         // Parse tasks within the play
         if (play.tasks) {
@@ -138,17 +156,19 @@ export class AnsibleParser extends BaseParser {
 
         // Parse vars
         if (play.vars) {
-          chunks.push(this.createChunk(
-            'variable',
-            `${playName}-vars`,
-            yaml.dump({ vars: play.vars }, { indent: 2 }),
-            playStart + 5,
-            playStart + 10,
-            {
-              parent: playName,
-              exports: Object.keys(play.vars)
-            }
-          ));
+          chunks.push(
+            this.createChunk(
+              'variable',
+              `${playName}-vars`,
+              yaml.dump({ vars: play.vars }, { indent: 2 }),
+              playStart + 5,
+              playStart + 10,
+              {
+                parent: playName,
+                exports: Object.keys(play.vars),
+              }
+            )
+          );
         }
       }
     });
@@ -158,7 +178,7 @@ export class AnsibleParser extends BaseParser {
 
   private parseTasksFile(tasks: any[], lines: string[]): SemanticChunk[] {
     const chunks: SemanticChunk[] = [];
-    
+
     if (Array.isArray(tasks)) {
       chunks.push(...this.parseTasksList(tasks, 1, 'tasks', 'tasks'));
     }
@@ -168,7 +188,7 @@ export class AnsibleParser extends BaseParser {
 
   private parseHandlersFile(handlers: any[], lines: string[]): SemanticChunk[] {
     const chunks: SemanticChunk[] = [];
-    
+
     if (Array.isArray(handlers)) {
       chunks.push(...this.parseTasksList(handlers, 1, 'handlers', 'handlers'));
     }
@@ -180,28 +200,35 @@ export class AnsibleParser extends BaseParser {
     const chunks: SemanticChunk[] = [];
 
     if (meta.galaxy_info) {
-      chunks.push(this.createChunk(
-        'config',
-        'galaxy-info',
-        yaml.dump({ galaxy_info: meta.galaxy_info }, { indent: 2 }),
-        1,
-        15,
-        { exports: ['galaxy_info'] }
-      ));
+      chunks.push(
+        this.createChunk(
+          'config',
+          'galaxy-info',
+          yaml.dump({ galaxy_info: meta.galaxy_info }, { indent: 2 }),
+          1,
+          15,
+          { exports: ['galaxy_info'] }
+        )
+      );
     }
 
     if (meta.dependencies) {
-      chunks.push(this.createChunk(
-        'config',
-        'role-dependencies',
-        yaml.dump({ dependencies: meta.dependencies }, { indent: 2 }),
-        this.findLineContaining(lines, 'dependencies:'),
-        this.findLineContaining(lines, 'dependencies:') + meta.dependencies.length + 2,
-        { 
-          dependencies: Array.isArray(meta.dependencies) ? 
-            meta.dependencies.map((dep: any) => typeof dep === 'string' ? dep : dep.name || dep.role) : []
-        }
-      ));
+      chunks.push(
+        this.createChunk(
+          'config',
+          'role-dependencies',
+          yaml.dump({ dependencies: meta.dependencies }, { indent: 2 }),
+          this.findLineContaining(lines, 'dependencies:'),
+          this.findLineContaining(lines, 'dependencies:') + meta.dependencies.length + 2,
+          {
+            dependencies: Array.isArray(meta.dependencies)
+              ? meta.dependencies.map((dep: any) =>
+                  typeof dep === 'string' ? dep : dep.name || dep.role
+                )
+              : [],
+          }
+        )
+      );
     }
 
     return chunks;
@@ -213,18 +240,21 @@ export class AnsibleParser extends BaseParser {
     if (vars && typeof vars === 'object') {
       Object.entries(vars).forEach(([key, value]) => {
         const varStart = this.findLineContaining(lines, `${key}:`);
-        const varContent = typeof value === 'object' ? 
-          yaml.dump({ [key]: value }, { indent: 2 }) : 
-          `${key}: ${value}`;
-        
-        chunks.push(this.createChunk(
-          'variable',
-          key,
-          varContent,
-          varStart,
-          varStart + (typeof value === 'object' ? 5 : 1),
-          { exports: [key] }
-        ));
+        const varContent =
+          typeof value === 'object'
+            ? yaml.dump({ [key]: value }, { indent: 2 })
+            : `${key}: ${value}`;
+
+        chunks.push(
+          this.createChunk(
+            'variable',
+            key,
+            varContent,
+            varStart,
+            varStart + (typeof value === 'object' ? 5 : 1),
+            { exports: [key] }
+          )
+        );
       });
     }
 
@@ -237,22 +267,29 @@ export class AnsibleParser extends BaseParser {
     Object.entries(config).forEach(([key, value]) => {
       if (typeof value === 'object' && value !== null) {
         const configContent = yaml.dump({ [key]: value }, { indent: 2 });
-        
-        chunks.push(this.createChunk(
-          'config',
-          key,
-          configContent,
-          this.findLineContaining(lines, `${key}:`),
-          this.findLineContaining(lines, `${key}:`) + configContent.split('\n').length,
-          { exports: [key] }
-        ));
+
+        chunks.push(
+          this.createChunk(
+            'config',
+            key,
+            configContent,
+            this.findLineContaining(lines, `${key}:`),
+            this.findLineContaining(lines, `${key}:`) + configContent.split('\n').length,
+            { exports: [key] }
+          )
+        );
       }
     });
 
     return chunks;
   }
 
-  private parseTasksList(tasks: any[], baseLineStart: number, parentName: string, type: string): SemanticChunk[] {
+  private parseTasksList(
+    tasks: any[],
+    baseLineStart: number,
+    parentName: string,
+    type: string
+  ): SemanticChunk[] {
     const chunks: SemanticChunk[] = [];
 
     if (!Array.isArray(tasks)) return chunks;
@@ -262,19 +299,21 @@ export class AnsibleParser extends BaseParser {
         const taskName = task.name || `${type}-${taskIndex}`;
         const taskContent = this.extractTaskContent(task);
         const taskStart = baseLineStart + taskIndex * 8; // Rough estimate
-        
-        chunks.push(this.createChunk(
-          'task',
-          taskName,
-          taskContent,
-          taskStart,
-          taskStart + taskContent.split('\n').length,
-          {
-            parent: parentName,
-            dependencies: this.extractTaskDependencies(task),
-            exports: [taskName]
-          }
-        ));
+
+        chunks.push(
+          this.createChunk(
+            'task',
+            taskName,
+            taskContent,
+            taskStart,
+            taskStart + taskContent.split('\n').length,
+            {
+              parent: parentName,
+              dependencies: this.extractTaskDependencies(task),
+              exports: [taskName],
+            }
+          )
+        );
 
         // Parse blocks within tasks
         if (task.block) {
@@ -296,7 +335,7 @@ export class AnsibleParser extends BaseParser {
 
   private extractPlayContent(play: any): string {
     const playObj: any = {};
-    
+
     // Core play attributes
     if (play.name) playObj.name = play.name;
     if (play.hosts) playObj.hosts = play.hosts;
@@ -309,38 +348,54 @@ export class AnsibleParser extends BaseParser {
     if (play.serial) playObj.serial = play.serial;
     if (play.tags) playObj.tags = play.tags;
     if (play.when) playObj.when = play.when;
-    
+
     return yaml.dump(playObj, { indent: 2 });
   }
 
   private extractTaskContent(task: any): string {
     const taskObj: any = {};
-    
+
     // Core task attributes
     if (task.name) taskObj.name = task.name;
-    
+
     // Find the module being used
-    const moduleKeys = Object.keys(task).filter(key => 
-      !['name', 'when', 'tags', 'notify', 'become', 'become_user', 'ignore_errors', 'changed_when', 'failed_when', 'until', 'retries', 'delay', 'vars', 'environment'].includes(key)
+    const moduleKeys = Object.keys(task).filter(
+      (key) =>
+        ![
+          'name',
+          'when',
+          'tags',
+          'notify',
+          'become',
+          'become_user',
+          'ignore_errors',
+          'changed_when',
+          'failed_when',
+          'until',
+          'retries',
+          'delay',
+          'vars',
+          'environment',
+        ].includes(key)
     );
-    
+
     for (const moduleKey of moduleKeys) {
       taskObj[moduleKey] = task[moduleKey];
     }
-    
+
     // Add common task attributes
     if (task.when) taskObj.when = task.when;
     if (task.tags) taskObj.tags = task.tags;
     if (task.notify) taskObj.notify = task.notify;
     if (task.become !== undefined) taskObj.become = task.become;
     if (task.vars) taskObj.vars = task.vars;
-    
+
     return yaml.dump(taskObj, { indent: 2 });
   }
 
   private extractPlayDependencies(play: any): string[] {
     const dependencies: string[] = [];
-    
+
     if (play.roles) {
       const roles = Array.isArray(play.roles) ? play.roles : [play.roles];
       for (const role of roles) {
@@ -353,51 +408,57 @@ export class AnsibleParser extends BaseParser {
         }
       }
     }
-    
+
     if (play.include) {
       dependencies.push(play.include);
     }
-    
+
     return dependencies;
   }
 
   private extractTaskDependencies(task: any): string[] {
     const dependencies: string[] = [];
-    
+
     // Handler notifications
     if (task.notify) {
       const handlers = Array.isArray(task.notify) ? task.notify : [task.notify];
       dependencies.push(...handlers);
     }
-    
+
     // Include/import statements
     if (task.include_tasks) dependencies.push(task.include_tasks);
     if (task.import_tasks) dependencies.push(task.import_tasks);
     if (task.include_vars) dependencies.push(task.include_vars);
     if (task.include_role) {
-      const roleName = typeof task.include_role === 'string' ? task.include_role : task.include_role.name;
+      const roleName =
+        typeof task.include_role === 'string' ? task.include_role : task.include_role.name;
       if (roleName) dependencies.push(roleName);
     }
-    
+
     return dependencies;
   }
 
   private findPlayStart(lines: string[], play: any, playIndex: number): number {
     if (play.name) {
-      const nameIndex = lines.findIndex(line => line.includes(play.name));
+      const nameIndex = lines.findIndex((line) => line.includes(play.name));
       if (nameIndex >= 0) return nameIndex + 1;
     }
-    
+
     if (play.hosts) {
-      const hostsIndex = lines.findIndex(line => line.includes(`hosts: ${play.hosts}`));
+      const hostsIndex = lines.findIndex((line) => line.includes(`hosts: ${play.hosts}`));
       if (hostsIndex >= 0) return hostsIndex + 1;
     }
-    
+
     // Fallback: estimate based on play index
     return Math.max(1, playIndex * 50);
   }
 
-  private findPlayEnd(lines: string[], playStart: number, playIndex: number, totalPlays: number): number {
+  private findPlayEnd(
+    lines: string[],
+    playStart: number,
+    playIndex: number,
+    totalPlays: number
+  ): number {
     // Simple estimation - could be improved with better YAML parsing
     const estimatedLength = 40;
     const nextPlayStart = playIndex < totalPlays - 1 ? (playIndex + 1) * 50 : lines.length;
@@ -405,7 +466,7 @@ export class AnsibleParser extends BaseParser {
   }
 
   private findLineContaining(lines: string[], text: string): number {
-    const lineIndex = lines.findIndex(line => line.includes(text));
+    const lineIndex = lines.findIndex((line) => line.includes(text));
     return lineIndex >= 0 ? lineIndex + 1 : 1;
   }
 }

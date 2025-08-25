@@ -9,7 +9,7 @@ import {
   ArrowPathIcon,
   ServerIcon,
   CpuChipIcon,
-  CloudArrowDownIcon
+  CloudArrowDownIcon,
 } from '@heroicons/react/24/outline';
 import { twMerge } from 'tailwind-merge';
 
@@ -28,10 +28,27 @@ export default function AdminPage() {
   const [saveMessage, setSaveMessage] = useState('');
   const [qdrantStatus, setQdrantStatus] = useState<Status>({ status: 'unknown', message: '' });
   const [ollamaStatus, setOllamaStatus] = useState<Status>({ status: 'unknown', message: '' });
-  const [embeddingStatus, setEmbeddingStatus] = useState<Status>({ status: 'unknown', message: '' });
+  const [embeddingStatus, setEmbeddingStatus] = useState<Status>({
+    status: 'unknown',
+    message: '',
+  });
   const [isTesting, setIsTesting] = useState(false);
   const [isRunningScheduler, setIsRunningScheduler] = useState(false);
-  const [schedulerResult, setSchedulerResult] = useState<any>(null);
+  interface SchedulerResult {
+    success: boolean;
+    message: string;
+    projectsProcessed: number;
+    results?: Array<{
+      projectId: string;
+      projectName: string;
+      success: boolean;
+      action: string;
+      message: string;
+    }>;
+    error?: string;
+  }
+
+  const [schedulerResult, setSchedulerResult] = useState<SchedulerResult | null>(null);
 
   useEffect(() => {
     fetch('/api/admin/config')
@@ -88,20 +105,20 @@ export default function AdminPage() {
   const handleRunScheduler = async () => {
     setIsRunningScheduler(true);
     setSchedulerResult(null);
-    
+
     try {
       const response = await fetch('/api/scheduler/run', {
-        method: 'POST'
+        method: 'POST',
       });
-      
+
       const result = await response.json();
       setSchedulerResult(result);
-      
     } catch (error) {
       setSchedulerResult({
         success: false,
         message: 'Failed to run scheduler',
-        error: error instanceof Error ? error.message : 'Unknown error'
+        projectsProcessed: 0,
+        error: error instanceof Error ? error.message : 'Unknown error',
       });
     } finally {
       setIsRunningScheduler(false);
@@ -109,28 +126,33 @@ export default function AdminPage() {
   };
 
   const getStatusIcon = (status: Status['status']) => {
-    const className = "h-5 w-5";
+    const className = 'h-5 w-5';
     switch (status) {
       case 'ok':
-        return <CheckCircleIcon className={twMerge(className, "text-green-500")} />;
+        return <CheckCircleIcon className={twMerge(className, 'text-green-500')} />;
       case 'error':
-        return <ExclamationCircleIcon className={twMerge(className, "text-red-500")} />;
+        return <ExclamationCircleIcon className={twMerge(className, 'text-red-500')} />;
       case 'not_found':
-        return <ExclamationCircleIcon className={twMerge(className, "text-orange-500")} />;
+        return <ExclamationCircleIcon className={twMerge(className, 'text-orange-500')} />;
       case 'pulling_started':
-        return <CloudArrowDownIcon className={twMerge(className, "text-blue-500")} />;
+        return <CloudArrowDownIcon className={twMerge(className, 'text-blue-500')} />;
       default:
-        return <ClockIcon className={twMerge(className, "text-gray-400")} />;
+        return <ClockIcon className={twMerge(className, 'text-gray-400')} />;
     }
   };
 
   const getStatusColor = (status: Status['status']) => {
     switch (status) {
-      case 'ok': return 'text-green-600';
-      case 'error': return 'text-red-600';
-      case 'not_found': return 'text-orange-600';
-      case 'pulling_started': return 'text-blue-600';
-      default: return 'text-gray-500';
+      case 'ok':
+        return 'text-green-600';
+      case 'error':
+        return 'text-red-600';
+      case 'not_found':
+        return 'text-orange-600';
+      case 'pulling_started':
+        return 'text-blue-600';
+      default:
+        return 'text-gray-500';
     }
   };
 
@@ -165,7 +187,8 @@ export default function AdminPage() {
               <div>
                 <h2 className="text-xl font-semibold text-gray-900 mb-2">Service Configuration</h2>
                 <p className="text-gray-600">
-                  Configure and test connections to the required services for IdeaMem to function properly.
+                  Configure and test connections to the required services for IdeaMem to function
+                  properly.
                 </p>
               </div>
             </div>
@@ -182,12 +205,16 @@ export default function AdminPage() {
                   </div>
                   <div>
                     <h3 className="text-lg font-semibold text-gray-900">Qdrant Vector Database</h3>
-                    <p className="text-sm text-gray-600">High-performance vector similarity search engine</p>
+                    <p className="text-sm text-gray-600">
+                      High-performance vector similarity search engine
+                    </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
                   {getStatusIcon(qdrantStatus.status)}
-                  <span className={twMerge("text-sm font-medium", getStatusColor(qdrantStatus.status))}>
+                  <span
+                    className={twMerge('text-sm font-medium', getStatusColor(qdrantStatus.status))}
+                  >
                     {qdrantStatus.message || 'Not tested'}
                   </span>
                 </div>
@@ -210,7 +237,11 @@ export default function AdminPage() {
                       disabled={isTesting}
                       className="btn btn-secondary whitespace-nowrap"
                     >
-                      {isTesting ? <ArrowPathIcon className="h-4 w-4 animate-spin" /> : 'Test Connection'}
+                      {isTesting ? (
+                        <ArrowPathIcon className="h-4 w-4 animate-spin" />
+                      ) : (
+                        'Test Connection'
+                      )}
                     </button>
                   </div>
                 </div>
@@ -231,7 +262,9 @@ export default function AdminPage() {
                 </div>
                 <div className="flex items-center gap-2">
                   {getStatusIcon(ollamaStatus.status)}
-                  <span className={twMerge("text-sm font-medium", getStatusColor(ollamaStatus.status))}>
+                  <span
+                    className={twMerge('text-sm font-medium', getStatusColor(ollamaStatus.status))}
+                  >
                     {ollamaStatus.message || 'Not tested'}
                   </span>
                 </div>
@@ -254,7 +287,11 @@ export default function AdminPage() {
                       disabled={isTesting}
                       className="btn btn-secondary whitespace-nowrap"
                     >
-                      {isTesting ? <ArrowPathIcon className="h-4 w-4 animate-spin" /> : 'Test Connection'}
+                      {isTesting ? (
+                        <ArrowPathIcon className="h-4 w-4 animate-spin" />
+                      ) : (
+                        'Test Connection'
+                      )}
                     </button>
                   </div>
                 </div>
@@ -264,11 +301,18 @@ export default function AdminPage() {
                   <div className="flex items-center justify-between mb-3">
                     <div>
                       <h4 className="font-medium text-gray-900">Nomic Embed Text Model</h4>
-                      <p className="text-sm text-gray-600">Required for generating text embeddings</p>
+                      <p className="text-sm text-gray-600">
+                        Required for generating text embeddings
+                      </p>
                     </div>
                     <div className="flex items-center gap-2">
                       {getStatusIcon(embeddingStatus.status)}
-                      <span className={twMerge("text-sm font-medium", getStatusColor(embeddingStatus.status))}>
+                      <span
+                        className={twMerge(
+                          'text-sm font-medium',
+                          getStatusColor(embeddingStatus.status)
+                        )}
+                      >
                         {embeddingStatus.message || 'Not tested'}
                       </span>
                     </div>
@@ -308,7 +352,9 @@ export default function AdminPage() {
                   </div>
                   <div>
                     <h3 className="text-lg font-semibold text-gray-900">Scheduled Indexing</h3>
-                    <p className="text-sm text-gray-600">Manage and monitor scheduled indexing operations</p>
+                    <p className="text-sm text-gray-600">
+                      Manage and monitor scheduled indexing operations
+                    </p>
                   </div>
                 </div>
               </div>
@@ -317,7 +363,8 @@ export default function AdminPage() {
                 <div className="bg-gray-50 rounded-lg p-4">
                   <h4 className="font-medium text-gray-900 mb-2">Manual Scheduler Run</h4>
                   <p className="text-sm text-gray-600 mb-3">
-                    Trigger the scheduler to check all projects and run scheduled indexing for those due.
+                    Trigger the scheduler to check all projects and run scheduled indexing for those
+                    due.
                   </p>
                   <button
                     type="button"
@@ -335,25 +382,33 @@ export default function AdminPage() {
                 </div>
 
                 {schedulerResult && (
-                  <div className={twMerge(
-                    "p-4 rounded-lg border",
-                    schedulerResult.success ? "bg-green-50 border-green-200" : "bg-red-50 border-red-200"
-                  )}>
-                    <h4 className={twMerge(
-                      "font-medium mb-2",
-                      schedulerResult.success ? "text-green-900" : "text-red-900"
-                    )}>
+                  <div
+                    className={twMerge(
+                      'p-4 rounded-lg border',
+                      schedulerResult.success
+                        ? 'bg-green-50 border-green-200'
+                        : 'bg-red-50 border-red-200'
+                    )}
+                  >
+                    <h4
+                      className={twMerge(
+                        'font-medium mb-2',
+                        schedulerResult.success ? 'text-green-900' : 'text-red-900'
+                      )}
+                    >
                       Scheduler Result
                     </h4>
-                    <p className={twMerge(
-                      "text-sm mb-2",
-                      schedulerResult.success ? "text-green-700" : "text-red-700"
-                    )}>
+                    <p
+                      className={twMerge(
+                        'text-sm mb-2',
+                        schedulerResult.success ? 'text-green-700' : 'text-red-700'
+                      )}
+                    >
                       {schedulerResult.message}
                     </p>
                     {schedulerResult.results && schedulerResult.results.length > 0 && (
                       <div className="space-y-1">
-                        {schedulerResult.results.map((result: any, index: number) => (
+                        {schedulerResult.results.map((result, index: number) => (
                           <div key={index} className="text-xs text-gray-600 font-mono">
                             {result.projectName}: {result.action} - {result.message}
                           </div>
@@ -380,10 +435,7 @@ export default function AdminPage() {
 
             {/* Save Button */}
             <div className="flex justify-end">
-              <button
-                type="submit"
-                className="btn btn-primary"
-              >
+              <button type="submit" className="btn btn-primary">
                 Save Configuration
               </button>
             </div>

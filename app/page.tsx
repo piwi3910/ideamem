@@ -1,13 +1,13 @@
 'use client';
 
 import Link from 'next/link';
-import { 
-  CpuChipIcon, 
-  CommandLineIcon, 
+import {
+  CpuChipIcon,
+  CommandLineIcon,
   ChartBarIcon,
   ServerIcon,
   Cog6ToothIcon,
-  FolderIcon
+  FolderIcon,
 } from '@heroicons/react/24/outline';
 
 export default function HomePage() {
@@ -36,8 +36,8 @@ export default function HomePage() {
             Intelligent Code Memory
           </h2>
           <p className="mt-4 text-xl text-gray-600 max-w-2xl mx-auto">
-            Index, search, and retrieve your codebase using AI-powered semantic search.
-            Built on vector embeddings for intelligent code understanding.
+            Index, search, and retrieve your codebase using AI-powered semantic search. Built on
+            vector embeddings for intelligent code understanding.
           </p>
         </div>
 
@@ -51,7 +51,8 @@ export default function HomePage() {
               <h3 className="ml-4 text-lg font-semibold text-gray-900">Projects</h3>
             </div>
             <p className="text-gray-600">
-              Manage your projects, add repositories, and control indexing with project-scoped isolation.
+              Manage your projects, add repositories, and control indexing with project-scoped
+              isolation.
             </p>
           </Link>
 
@@ -82,7 +83,9 @@ export default function HomePage() {
 
         {/* Global Management Section */}
         <div className="mb-12">
-          <h3 className="text-2xl font-semibold text-gray-900 mb-6 text-center">Global Knowledge Management</h3>
+          <h3 className="text-2xl font-semibold text-gray-900 mb-6 text-center">
+            Global Knowledge Management
+          </h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             <Link href="/rules" className="card hover:shadow-md transition-shadow">
               <div className="flex items-center mb-4">
@@ -92,7 +95,8 @@ export default function HomePage() {
                 <h4 className="ml-4 text-lg font-semibold text-gray-900">Rules</h4>
               </div>
               <p className="text-gray-600">
-                Manage global coding standards, style guides, and architectural constraints used by MCP validation tools.
+                Manage global coding standards, style guides, and architectural constraints used by
+                MCP validation tools.
               </p>
             </Link>
 

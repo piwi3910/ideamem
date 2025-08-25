@@ -37,25 +37,25 @@ graph TB
         TW[Tailwind CSS v3]
         HUI[Headless UI]
     end
-    
+
     subgraph "Backend"
         API[Next.js API Routes]
         Node[Node.js Runtime]
         FS[File System Storage]
     end
-    
+
     subgraph "External Services"
         Qdrant[Qdrant Vector DB]
         Ollama[Ollama LLM]
         Git[Git Repositories]
     end
-    
+
     subgraph "Protocols"
         MCP[Model Context Protocol]
         JSONRPC[JSON-RPC 2.0]
         HTTP[HTTP/HTTPS]
     end
-    
+
     React --> Next
     Next --> API
     API --> Qdrant
@@ -80,7 +80,7 @@ graph LR
         Admin[Admin Panel]
         Test[MCP Test Interface]
     end
-    
+
     subgraph "Components"
         Modal[Modal Dialogs]
         Cards[Project Cards]
@@ -88,19 +88,19 @@ graph LR
         Progress[Progress Bars]
         Metrics[Metric Displays]
     end
-    
+
     subgraph "Hooks"
         State[State Management]
         Polling[Real-time Polling]
         API[API Integration]
     end
-    
+
     Dashboard --> Cards
     Details --> Metrics
     Details --> Modal
     Admin --> Forms
     Test --> API
-    
+
     Cards --> State
     Progress --> Polling
     Modal --> API
@@ -138,25 +138,25 @@ graph TB
         Admin["/api/admin/*"]
         Indexing["/api/projects/indexing/status"]
     end
-    
+
     subgraph "Business Logic"
         ProjectManager["lib/projects.ts"]
         MemorySystem["lib/memory.ts"]
         IndexingEngine["lib/indexing.ts"]
         ConfigManager["lib/config.ts"]
     end
-    
+
     subgraph "External Integrations"
         QdrantAPI["Qdrant HTTP API"]
         OllamaAPI["Ollama REST API"]
         GitCLI["Git Command Line"]
     end
-    
+
     MCP_API --> MemorySystem
     Projects --> ProjectManager
     Admin --> ConfigManager
     Indexing --> IndexingEngine
-    
+
     MemorySystem --> QdrantAPI
     MemorySystem --> OllamaAPI
     IndexingEngine --> GitCLI
@@ -200,7 +200,7 @@ sequenceDiagram
     participant A as API
     participant P as Project Manager
     participant F as File System
-    
+
     U->>W: Create Project Form
     W->>A: POST /api/projects
     A->>P: createProject()
@@ -224,13 +224,13 @@ sequenceDiagram
     participant M as Memory System
     participant O as Ollama
     participant Q as Qdrant
-    
+
     U->>W: Click "Index"
     W->>A: POST /projects/{id}/index
     A->>I: startCodebaseIndexing()
     I->>G: git clone
     G-->>I: Repository Files
-    
+
     loop For Each File
         I->>I: Parse & Chunk Content
         I->>M: ingest()
@@ -242,7 +242,7 @@ sequenceDiagram
         A->>W: Progress Update
         W-->>U: Progress Bar
     end
-    
+
     I-->>A: Indexing Complete
     A-->>W: Status Update
     W-->>U: Success Indicator
@@ -258,7 +258,7 @@ sequenceDiagram
     participant O as Ollama
     participant Q as Qdrant
     participant P as Project Manager
-    
+
     C->>A: memory.retrieve(query)
     A->>P: trackQuery() [async]
     A->>M: retrieve()
@@ -288,25 +288,25 @@ data/
 
 ```typescript
 interface Project {
-  id: string;                    // UUID
-  name: string;                  // Display name
-  description?: string;          // Optional description
-  gitRepo: string;              // Repository URL
-  token: string;                // Authentication token (idm_*)
-  createdAt: string;            // ISO timestamp
-  updatedAt: string;            // ISO timestamp
-  indexedAt?: string;           // Last successful index
-  indexStatus: Status;          // Current indexing state
-  indexProgress?: number;       // 0-100 completion
-  fileCount?: number;           // Indexed files count
-  vectorCount?: number;         // Vector embeddings count
-  lastError?: string;           // Last error message
-  
+  id: string; // UUID
+  name: string; // Display name
+  description?: string; // Optional description
+  gitRepo: string; // Repository URL
+  token: string; // Authentication token (idm_*)
+  createdAt: string; // ISO timestamp
+  updatedAt: string; // ISO timestamp
+  indexedAt?: string; // Last successful index
+  indexStatus: Status; // Current indexing state
+  indexProgress?: number; // 0-100 completion
+  fileCount?: number; // Indexed files count
+  vectorCount?: number; // Vector embeddings count
+  lastError?: string; // Last error message
+
   // Query metrics
-  totalQueries?: number;        // Lifetime query count
-  lastQueryAt?: string;         // Most recent query
-  queriesThisWeek?: number;     // 7-day rolling count
-  queriesThisMonth?: number;    // 30-day rolling count
+  totalQueries?: number; // Lifetime query count
+  lastQueryAt?: string; // Most recent query
+  queriesThisWeek?: number; // 7-day rolling count
+  queriesThisMonth?: number; // 30-day rolling count
 }
 ```
 
@@ -314,16 +314,16 @@ interface Project {
 
 ```typescript
 interface IndexingJob {
-  projectId: string;            // Project reference
-  status: JobStatus;            // Current job state
-  progress: number;             // 0-100 completion
-  currentFile?: string;         // Currently processing file
-  totalFiles: number;           // Total files to process
-  processedFiles: number;       // Files completed
-  vectorCount?: number;         // Vectors created
-  startTime: string;            // Job start timestamp
-  endTime?: string;             // Job completion timestamp
-  error?: string;               // Error message if failed
+  projectId: string; // Project reference
+  status: JobStatus; // Current job state
+  progress: number; // 0-100 completion
+  currentFile?: string; // Currently processing file
+  totalFiles: number; // Total files to process
+  processedFiles: number; // Files completed
+  vectorCount?: number; // Vectors created
+  startTime: string; // Job start timestamp
+  endTime?: string; // Job completion timestamp
+  error?: string; // Error message if failed
 }
 ```
 
@@ -333,13 +333,13 @@ Vectors are stored in Qdrant with project-based isolation:
 
 ```typescript
 interface VectorPayload {
-  content: string;              // Original text content
-  source: string;               // File path or identifier
-  type: ContentType;            // Content classification
-  language: string;             // Programming language
-  project_id: string;           // Project isolation
-  scope: 'project' | 'global';  // Access scope
-  chunk_index?: number;         // Chunk sequence number
+  content: string; // Original text content
+  source: string; // File path or identifier
+  type: ContentType; // Content classification
+  language: string; // Programming language
+  project_id: string; // Project isolation
+  scope: 'project' | 'global'; // Access scope
+  chunk_index?: number; // Chunk sequence number
   metadata?: Record<string, any>; // Additional metadata
 }
 ```
@@ -373,18 +373,18 @@ graph TB
         Valid[Input Validation]
         Enc[Data Encoding]
     end
-    
+
     subgraph "Threat Mitigation"
         XSS[XSS Protection]
         CSRF[CSRF Prevention]
         Inject[Injection Prevention]
         Access[Access Control]
     end
-    
+
     Auth --> Iso
     Iso --> Valid
     Valid --> Enc
-    
+
     Auth --> Access
     Valid --> Inject
     Enc --> XSS
@@ -443,31 +443,31 @@ graph TB
     subgraph "Load Balancer"
         LB[Load Balancer]
     end
-    
+
     subgraph "App Instances"
         App1[IdeaMem Instance 1]
         App2[IdeaMem Instance 2]
         App3[IdeaMem Instance N]
     end
-    
+
     subgraph "Shared Services"
         Qdrant[Qdrant Cluster]
         Ollama[Ollama Pool]
         Storage[Shared Storage]
     end
-    
+
     LB --> App1
     LB --> App2
     LB --> App3
-    
+
     App1 --> Qdrant
     App2 --> Qdrant
     App3 --> Qdrant
-    
+
     App1 --> Ollama
     App2 --> Ollama
     App3 --> Ollama
-    
+
     App1 --> Storage
     App2 --> Storage
     App3 --> Storage
@@ -510,11 +510,11 @@ graph TB
 interface ErrorResponse {
   jsonrpc: '2.0';
   error: {
-    code: number;               // JSON-RPC error code
-    message: string;            // Human-readable message
-    data?: any;                 // Additional error context
+    code: number; // JSON-RPC error code
+    message: string; // Human-readable message
+    data?: any; // Additional error context
   };
-  id: string | number | null;   // Request ID
+  id: string | number | null; // Request ID
 }
 ```
 
@@ -523,17 +523,17 @@ interface ErrorResponse {
 ```mermaid
 graph TB
     Error[Error Detected]
-    
+
     Error --> Retry{Retryable?}
     Retry -->|Yes| Wait[Exponential Backoff]
     Wait --> Attempt[Retry Operation]
     Attempt --> Success[Success]
     Attempt --> Retry
-    
+
     Retry -->|No| Fallback{Fallback Available?}
     Fallback -->|Yes| Degrade[Graceful Degradation]
     Fallback -->|No| Report[Report Error to User]
-    
+
     Degrade --> Partial[Partial Functionality]
     Report --> UserAction[User Intervention Required]
 ```
@@ -561,14 +561,14 @@ graph TB
 
 ```typescript
 interface LogEntry {
-  timestamp: string;            // ISO timestamp
-  level: LogLevel;              // ERROR, WARN, INFO, DEBUG
-  component: string;            // System component
-  message: string;              // Log message
+  timestamp: string; // ISO timestamp
+  level: LogLevel; // ERROR, WARN, INFO, DEBUG
+  component: string; // System component
+  message: string; // Log message
   context?: Record<string, any>; // Additional context
-  requestId?: string;           // Request correlation
-  userId?: string;              // User context
-  projectId?: string;           // Project context
+  requestId?: string; // Request correlation
+  userId?: string; // User context
+  projectId?: string; // Project context
 }
 ```
 

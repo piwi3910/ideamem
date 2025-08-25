@@ -119,7 +119,7 @@ pm2 startup
 server {
     listen 80;
     server_name your-domain.com;
-    
+
     # Redirect HTTP to HTTPS
     return 301 https://$server_name$request_uri;
 }
@@ -127,15 +127,15 @@ server {
 server {
     listen 443 ssl http2;
     server_name your-domain.com;
-    
+
     ssl_certificate /path/to/certificate.crt;
     ssl_certificate_key /path/to/private.key;
-    
+
     # Security headers
     add_header X-Frame-Options DENY;
     add_header X-Content-Type-Options nosniff;
     add_header X-XSS-Protection "1; mode=block";
-    
+
     location / {
         proxy_pass http://localhost:3000;
         proxy_http_version 1.1;
@@ -146,7 +146,7 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_cache_bypass $http_upgrade;
-        
+
         # Increase timeouts for long-running operations
         proxy_connect_timeout 60s;
         proxy_send_timeout 60s;
@@ -169,7 +169,7 @@ services:
   ideamem:
     build: .
     ports:
-      - "3000:3000"
+      - '3000:3000'
     environment:
       - QDRANT_URL=http://qdrant:6333
       - OLLAMA_URL=http://ollama:11434
@@ -184,7 +184,7 @@ services:
   qdrant:
     image: qdrant/qdrant:latest
     ports:
-      - "6333:6333"
+      - '6333:6333'
     volumes:
       - qdrant_data:/qdrant/storage
     restart: unless-stopped
@@ -193,13 +193,13 @@ services:
   ollama:
     image: ollama/ollama:latest
     ports:
-      - "11434:11434"
+      - '11434:11434'
     volumes:
       - ollama_data:/root/.ollama
     restart: unless-stopped
     # Post-startup model pull
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      test: ['CMD', 'curl', '-f', 'http://localhost:11434/api/tags']
       interval: 30s
       timeout: 10s
       retries: 3
@@ -397,22 +397,22 @@ spec:
         app: ideamem
     spec:
       containers:
-      - name: ideamem
-        image: gcr.io/PROJECT_ID/ideamem:latest
-        ports:
-        - containerPort: 3000
-        env:
-        - name: QDRANT_URL
-          value: "http://qdrant-service:6333"
-        - name: OLLAMA_URL
-          value: "http://ollama-service:11434"
-        resources:
-          requests:
-            memory: "2Gi"
-            cpu: "1"
-          limits:
-            memory: "4Gi"
-            cpu: "2"
+        - name: ideamem
+          image: gcr.io/PROJECT_ID/ideamem:latest
+          ports:
+            - containerPort: 3000
+          env:
+            - name: QDRANT_URL
+              value: 'http://qdrant-service:6333'
+            - name: OLLAMA_URL
+              value: 'http://ollama-service:11434'
+          resources:
+            requests:
+              memory: '2Gi'
+              cpu: '1'
+            limits:
+              memory: '4Gi'
+              cpu: '2'
 ---
 apiVersion: v1
 kind: Service
@@ -422,8 +422,8 @@ spec:
   selector:
     app: ideamem
   ports:
-  - port: 80
-    targetPort: 3000
+    - port: 80
+      targetPort: 3000
   type: LoadBalancer
 ```
 
@@ -460,7 +460,7 @@ Create `health-check.sh`:
 check_service() {
     local url=$1
     local name=$2
-    
+
     if curl -f -s -o /dev/null "$url"; then
         echo "✅ $name is healthy"
         return 0
@@ -541,10 +541,10 @@ storage:
   # Optimize for search performance
   search_threads: 4
   write_ahead_log: true
-  
+
   # Memory optimization
   memory_threshold: 0.8
-  
+
   # Disk optimization
   disk_threshold: 0.9
 ```
@@ -563,19 +563,21 @@ export OLLAMA_FLASH_ATTENTION=1
 #### Common Issues
 
 1. **Out of Memory**
+
    ```bash
    # Check memory usage
    docker stats
-   
+
    # Increase memory limits
    docker-compose up -d --scale ideamem=1 --memory=8g
    ```
 
 2. **Slow Indexing**
+
    ```bash
    # Check Ollama performance
    curl http://localhost:11434/api/generate -d '{"model":"nomic-embed-text","prompt":"test"}'
-   
+
    # Monitor Qdrant performance
    curl http://localhost:6333/metrics
    ```

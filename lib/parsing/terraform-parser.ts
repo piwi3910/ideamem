@@ -7,27 +7,31 @@ export class TerraformParser extends BaseParser {
   parse(content: string, source?: string): ParseResult {
     try {
       const chunks = this.extractSemanticChunks(content, source);
-      
+
       return {
         chunks,
-        success: true
+        success: true,
       };
     } catch (error) {
       return {
-        chunks: [{
-          type: 'config',
-          name: source ? source.replace(/.*\//, '').replace(/\.tf(vars)?$/, '') : 'terraform-config',
-          content,
-          startLine: 1,
-          endLine: content.split('\n').length,
-          metadata: {
-            language: this.language,
-            dependencies: []
-          }
-        }],
+        chunks: [
+          {
+            type: 'config',
+            name: source
+              ? source.replace(/.*\//, '').replace(/\.tf(vars)?$/, '')
+              : 'terraform-config',
+            content,
+            startLine: 1,
+            endLine: content.split('\n').length,
+            metadata: {
+              language: this.language,
+              dependencies: [],
+            },
+          },
+        ],
         success: false,
         error: error instanceof Error ? error.message : 'Terraform parsing failed',
-        fallbackUsed: true
+        fallbackUsed: true,
       };
     }
   }
@@ -35,7 +39,7 @@ export class TerraformParser extends BaseParser {
   private extractSemanticChunks(content: string, source?: string): SemanticChunk[] {
     const chunks: SemanticChunk[] = [];
     const lines = content.split('\n');
-    
+
     if (source?.endsWith('.tfvars')) {
       // Parse variable definitions file
       chunks.push(...this.parseTfVars(lines));
@@ -50,39 +54,44 @@ export class TerraformParser extends BaseParser {
   private parseBlocks(lines: string[]): SemanticChunk[] {
     const chunks: SemanticChunk[] = [];
     let i = 0;
-    
+
     while (i < lines.length) {
       const line = lines[i].trim();
-      
+
       // Skip empty lines and comments
       if (line === '' || line.startsWith('#') || line.startsWith('//')) {
         i++;
         continue;
       }
-      
+
       const block = this.parseBlock(lines, i);
       if (block) {
-        chunks.push(this.createChunk(
-          this.getBlockType(block.type),
-          block.name,
-          block.content,
-          block.startLine,
-          block.endLine,
-          {
-            dependencies: block.dependencies,
-            exports: block.exports
-          }
-        ));
+        chunks.push(
+          this.createChunk(
+            this.getBlockType(block.type),
+            block.name,
+            block.content,
+            block.startLine,
+            block.endLine,
+            {
+              dependencies: block.dependencies,
+              exports: block.exports,
+            }
+          )
+        );
         i = block.endLine;
       } else {
         i++;
       }
     }
-    
+
     return chunks;
   }
 
-  private parseBlock(lines: string[], startIndex: number): {
+  private parseBlock(
+    lines: string[],
+    startIndex: number
+  ): {
     type: string;
     name: string;
     content: string;
@@ -92,7 +101,7 @@ export class TerraformParser extends BaseParser {
     exports: string[];
   } | null {
     const line = lines[startIndex].trim();
-    
+
     // Match HCL block patterns
     const blockPatterns = [
       // resource "type" "name" {
@@ -110,21 +119,21 @@ export class TerraformParser extends BaseParser {
       // locals {
       /^(locals)\s*\{/,
       // terraform {
-      /^(terraform)\s*\{/
+      /^(terraform)\s*\{/,
     ];
-    
+
     for (const pattern of blockPatterns) {
       const match = line.match(pattern);
       if (match) {
         const blockType = match[1];
         const resourceType = match[2]; // For resource/data blocks
         const blockName = match[3] || match[2] || blockType;
-        
+
         const blockEnd = this.findBlockEnd(lines, startIndex);
         const blockContent = lines.slice(startIndex, blockEnd).join('\n');
-        
+
         const fullName = resourceType ? `${resourceType}.${blockName}` : blockName;
-        
+
         return {
           type: blockType,
           name: fullName,
@@ -132,21 +141,21 @@ export class TerraformParser extends BaseParser {
           startLine: startIndex + 1,
           endLine: blockEnd,
           dependencies: this.extractBlockDependencies(blockContent, blockType),
-          exports: this.extractBlockExports(blockType, resourceType, blockName)
+          exports: this.extractBlockExports(blockType, resourceType, blockName),
         };
       }
     }
-    
+
     return null;
   }
 
   private findBlockEnd(lines: string[], startIndex: number): number {
     let braceCount = 0;
     let foundOpenBrace = false;
-    
+
     for (let i = startIndex; i < lines.length; i++) {
       const line = lines[i];
-      
+
       for (const char of line) {
         if (char === '{') {
           braceCount++;
@@ -159,30 +168,33 @@ export class TerraformParser extends BaseParser {
         }
       }
     }
-    
+
     return lines.length;
   }
 
   private extractBlockDependencies(content: string, blockType: string): string[] {
     const dependencies: string[] = [];
-    
+
     // Extract variable references: var.name, local.name, etc.
     const varReferences = content.match(/(?:var|local|data|module)\.[\w.-]+/g);
     if (varReferences) {
       dependencies.push(...varReferences);
     }
-    
+
     // Extract resource references: resource_type.name
     const resourceReferences = content.match(/[\w_]+\.[\w_]+(?=\s*[,\s\]\}])/g);
     if (resourceReferences) {
-      dependencies.push(...resourceReferences.filter(ref => 
-        !ref.startsWith('var.') && 
-        !ref.startsWith('local.') && 
-        !ref.startsWith('data.') &&
-        !ref.startsWith('module.')
-      ));
+      dependencies.push(
+        ...resourceReferences.filter(
+          (ref) =>
+            !ref.startsWith('var.') &&
+            !ref.startsWith('local.') &&
+            !ref.startsWith('data.') &&
+            !ref.startsWith('module.')
+        )
+      );
     }
-    
+
     // Extract provider dependencies for resources
     if (blockType === 'resource') {
       const providerMatch = content.match(/provider\s*=\s*[\w.-]+/);
@@ -190,7 +202,7 @@ export class TerraformParser extends BaseParser {
         dependencies.push(providerMatch[0]);
       }
     }
-    
+
     // Extract module source
     if (blockType === 'module') {
       const sourceMatch = content.match(/source\s*=\s*"([^"]+)"/);
@@ -198,13 +210,17 @@ export class TerraformParser extends BaseParser {
         dependencies.push(sourceMatch[1]);
       }
     }
-    
+
     return dependencies;
   }
 
-  private extractBlockExports(blockType: string, resourceType?: string, blockName?: string): string[] {
+  private extractBlockExports(
+    blockType: string,
+    resourceType?: string,
+    blockName?: string
+  ): string[] {
     const exports: string[] = [];
-    
+
     switch (blockType) {
       case 'resource':
       case 'data':
@@ -224,7 +240,7 @@ export class TerraformParser extends BaseParser {
         exports.push('locals');
         break;
     }
-    
+
     return exports;
   }
 
@@ -258,11 +274,11 @@ export class TerraformParser extends BaseParser {
       startLine: number;
       lines: string[];
     } | null = null;
-    
+
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       const trimmed = line.trim();
-      
+
       // Skip empty lines and comments
       if (trimmed === '' || trimmed.startsWith('#')) {
         if (currentVar) {
@@ -270,113 +286,120 @@ export class TerraformParser extends BaseParser {
         }
         continue;
       }
-      
+
       // Check for variable assignment
       const varMatch = trimmed.match(/^(\w+)\s*=\s*(.*)$/);
       if (varMatch) {
         // Finish previous variable
         if (currentVar) {
-          chunks.push(this.createChunk(
-            'variable',
-            currentVar.name,
-            currentVar.lines.join('\n'),
-            currentVar.startLine,
-            i,
-            { exports: [currentVar.name] }
-          ));
+          chunks.push(
+            this.createChunk(
+              'variable',
+              currentVar.name,
+              currentVar.lines.join('\n'),
+              currentVar.startLine,
+              i,
+              { exports: [currentVar.name] }
+            )
+          );
         }
-        
+
         // Start new variable
         const varName = varMatch[1];
-        let varValue = varMatch[2];
-        
+        const varValue = varMatch[2];
+
         currentVar = {
           name: varName,
           value: varValue,
           startLine: i + 1,
-          lines: [line]
+          lines: [line],
         };
-        
+
         // Check if it's a multi-line value
         if (this.isMultiLineValue(varValue)) {
           // Continue reading until the value is complete
           continue;
         } else {
           // Single line variable, complete it immediately
-          chunks.push(this.createChunk(
-            'variable',
-            currentVar.name,
-            line,
-            currentVar.startLine,
-            i + 1,
-            { exports: [currentVar.name] }
-          ));
+          chunks.push(
+            this.createChunk('variable', currentVar.name, line, currentVar.startLine, i + 1, {
+              exports: [currentVar.name],
+            })
+          );
           currentVar = null;
         }
       } else if (currentVar) {
         // Continue multi-line value
         currentVar.lines.push(line);
         currentVar.value += '\n' + trimmed;
-        
+
         // Check if this completes the multi-line value
         if (this.isValueComplete(currentVar.value)) {
-          chunks.push(this.createChunk(
-            'variable',
-            currentVar.name,
-            currentVar.lines.join('\n'),
-            currentVar.startLine,
-            i + 1,
-            { exports: [currentVar.name] }
-          ));
+          chunks.push(
+            this.createChunk(
+              'variable',
+              currentVar.name,
+              currentVar.lines.join('\n'),
+              currentVar.startLine,
+              i + 1,
+              { exports: [currentVar.name] }
+            )
+          );
           currentVar = null;
         }
       }
     }
-    
+
     // Handle final variable
     if (currentVar) {
-      chunks.push(this.createChunk(
-        'variable',
-        currentVar.name,
-        currentVar.lines.join('\n'),
-        currentVar.startLine,
-        lines.length,
-        { exports: [currentVar.name] }
-      ));
+      chunks.push(
+        this.createChunk(
+          'variable',
+          currentVar.name,
+          currentVar.lines.join('\n'),
+          currentVar.startLine,
+          lines.length,
+          { exports: [currentVar.name] }
+        )
+      );
     }
-    
+
     return chunks;
   }
 
   private isMultiLineValue(value: string): boolean {
     const trimmedValue = value.trim();
-    
+
     // Check for unmatched brackets/braces/quotes
     const openBrackets = (trimmedValue.match(/\[/g) || []).length;
     const closeBrackets = (trimmedValue.match(/\]/g) || []).length;
     const openBraces = (trimmedValue.match(/\{/g) || []).length;
     const closeBraces = (trimmedValue.match(/\}/g) || []).length;
     const quotes = (trimmedValue.match(/"/g) || []).length;
-    
-    return openBrackets !== closeBrackets || 
-           openBraces !== closeBraces || 
-           quotes % 2 !== 0 ||
-           trimmedValue.endsWith('\\');
+
+    return (
+      openBrackets !== closeBrackets ||
+      openBraces !== closeBraces ||
+      quotes % 2 !== 0 ||
+      trimmedValue.endsWith('\\')
+    );
   }
 
   private isValueComplete(value: string): boolean {
     const trimmedValue = value.trim();
-    
+
     // Check for matched brackets/braces/quotes
     const openBrackets = (trimmedValue.match(/\[/g) || []).length;
     const closeBrackets = (trimmedValue.match(/\]/g) || []).length;
     const openBraces = (trimmedValue.match(/\{/g) || []).length;
     const closeBraces = (trimmedValue.match(/\}/g) || []).length;
     const quotes = (trimmedValue.match(/"/g) || []).length;
-    
-    return openBrackets === closeBrackets && 
-           openBraces === closeBraces && 
-           quotes % 2 === 0 &&
-           !trimmedValue.endsWith('\\');
+
+    return (
+      openBrackets === closeBrackets &&
+      openBraces === closeBraces &&
+      quotes % 2 === 0 &&
+      !trimmedValue.endsWith('\\')
+    );
   }
 }

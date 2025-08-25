@@ -8,7 +8,7 @@ import {
   ListBulletIcon,
   FolderIcon,
   DocumentDuplicateIcon,
-  ArrowPathIcon
+  ArrowPathIcon,
 } from '@heroicons/react/24/outline';
 
 const defaultIngestParams = {
@@ -17,23 +17,31 @@ const defaultIngestParams = {
   type: 'code',
   language: 'typescript',
   project_id: 'my-awesome-project',
-  scope: 'project'
+  scope: 'project',
 };
 
 const defaultRetrieveParams = {
   query: 'how to create and validate users',
   filters: {
     type: 'code',
-    language: 'typescript'
+    language: 'typescript',
   },
   project_id: 'my-awesome-project',
-  scope: 'all'
+  scope: 'all',
 };
 
 export default function McpTestPage() {
   const [ingestParams, setIngestParams] = useState(JSON.stringify(defaultIngestParams, null, 2));
-  const [retrieveParams, setRetrieveParams] = useState(JSON.stringify(defaultRetrieveParams, null, 2));
-  const [deleteParams, setDeleteParams] = useState(JSON.stringify({ source: 'src/models/User.ts', project_id: 'my-awesome-project', scope: 'project' }, null, 2));
+  const [retrieveParams, setRetrieveParams] = useState(
+    JSON.stringify(defaultRetrieveParams, null, 2)
+  );
+  const [deleteParams, setDeleteParams] = useState(
+    JSON.stringify(
+      { source: 'src/models/User.ts', project_id: 'my-awesome-project', scope: 'project' },
+      null,
+      2
+    )
+  );
   const [response, setResponse] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
@@ -50,8 +58,8 @@ export default function McpTestPage() {
           method: 'tools/call',
           params: {
             name: toolName,
-            arguments: JSON.parse(params)
-          }
+            arguments: JSON.parse(params),
+          },
         }),
       });
       const data = await res.json();
@@ -73,7 +81,7 @@ export default function McpTestPage() {
         body: JSON.stringify({
           jsonrpc: '2.0',
           id: Math.random().toString(36).substring(7),
-          method: 'tools/list'
+          method: 'tools/list',
         }),
       });
       const data = await res.json();
@@ -124,7 +132,7 @@ export default function McpTestPage() {
                 <CommandLineIcon className="h-6 w-6 text-primary-600" />
                 <h2 className="text-xl font-semibold text-gray-900">Protocol Operations</h2>
               </div>
-              
+
               <div className="space-y-3">
                 <button
                   onClick={handleListTools}
@@ -132,9 +140,13 @@ export default function McpTestPage() {
                   className="btn btn-secondary w-full justify-center flex items-center gap-2"
                 >
                   <ListBulletIcon className="h-4 w-4" />
-                  {isLoading ? <ArrowPathIcon className="h-4 w-4 animate-spin" /> : 'List Available Tools'}
+                  {isLoading ? (
+                    <ArrowPathIcon className="h-4 w-4 animate-spin" />
+                  ) : (
+                    'List Available Tools'
+                  )}
                 </button>
-                
+
                 <button
                   onClick={() => handleSubmit('memory.list_projects', '{}')}
                   disabled={isLoading}
@@ -239,12 +251,12 @@ export default function McpTestPage() {
                   </button>
                 )}
               </div>
-              
+
               <div className="relative">
                 <pre className="bg-gray-900 text-green-400 p-4 rounded-lg text-sm overflow-auto max-h-96 font-mono whitespace-pre-wrap">
                   {response || 'No response yet. Execute a tool to see the result.'}
                 </pre>
-                
+
                 {isLoading && (
                   <div className="absolute inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center rounded-lg">
                     <div className="flex items-center gap-2 text-white">
@@ -258,9 +270,15 @@ export default function McpTestPage() {
               {/* Response Info */}
               {response && (
                 <div className="mt-4 p-3 bg-gray-50 rounded-lg text-sm text-gray-600">
-                  <p><strong>Protocol:</strong> JSON-RPC 2.0 over HTTP</p>
-                  <p><strong>Content-Type:</strong> application/json</p>
-                  <p><strong>Method:</strong> POST /api/mcp</p>
+                  <p>
+                    <strong>Protocol:</strong> JSON-RPC 2.0 over HTTP
+                  </p>
+                  <p>
+                    <strong>Content-Type:</strong> application/json
+                  </p>
+                  <p>
+                    <strong>Method:</strong> POST /api/mcp
+                  </p>
                 </div>
               )}
             </div>
@@ -272,27 +290,41 @@ export default function McpTestPage() {
           <h3 className="text-lg font-semibold text-gray-900 mb-4">MCP Protocol Documentation</h3>
           <div className="prose prose-sm max-w-none">
             <p className="text-gray-600 mb-4">
-              This interface allows you to test the Model Context Protocol (MCP) implementation. 
-              All requests follow the JSON-RPC 2.0 specification with proper error handling.
+              This interface allows you to test the Model Context Protocol (MCP) implementation. All
+              requests follow the JSON-RPC 2.0 specification with proper error handling.
             </p>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
               <div>
                 <h4 className="font-semibold text-gray-900 mb-2">Available Tools</h4>
                 <ul className="space-y-1 text-gray-600">
-                  <li><code>memory.ingest</code> - Store content with semantic chunking</li>
-                  <li><code>memory.retrieve</code> - Search indexed content</li>
-                  <li><code>memory.delete_source</code> - Remove content by source</li>
-                  <li><code>memory.list_projects</code> - List all projects</li>
+                  <li>
+                    <code>memory.ingest</code> - Store content with semantic chunking
+                  </li>
+                  <li>
+                    <code>memory.retrieve</code> - Search indexed content
+                  </li>
+                  <li>
+                    <code>memory.delete_source</code> - Remove content by source
+                  </li>
+                  <li>
+                    <code>memory.list_projects</code> - List all projects
+                  </li>
                 </ul>
               </div>
-              
+
               <div>
                 <h4 className="font-semibold text-gray-900 mb-2">Project Scopes</h4>
                 <ul className="space-y-1 text-gray-600">
-                  <li><code>global</code> - Accessible across all projects</li>
-                  <li><code>project</code> - Isolated to specific project</li>
-                  <li><code>all</code> - Search both scopes (retrieve only)</li>
+                  <li>
+                    <code>global</code> - Accessible across all projects
+                  </li>
+                  <li>
+                    <code>project</code> - Isolated to specific project
+                  </li>
+                  <li>
+                    <code>all</code> - Search both scopes (retrieve only)
+                  </li>
                 </ul>
               </div>
             </div>

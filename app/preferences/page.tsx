@@ -11,7 +11,7 @@ import {
   UserCircleIcon,
   DocumentTextIcon,
   CogIcon,
-  GlobeAltIcon
+  GlobeAltIcon,
 } from '@heroicons/react/24/outline';
 import { twMerge } from 'tailwind-merge';
 
@@ -70,17 +70,17 @@ export default function PreferencesPage() {
           source: newPreference.source,
           content: newPreference.content,
           type: 'user_preference',
-          language: 'markdown'
-        })
+          language: 'markdown',
+        }),
       });
 
       if (!response.ok) throw new Error('Failed to add preference');
-      
+
       setSaveMessage('Preference added successfully');
       setNewPreference({ source: '', content: '' });
       setShowAddForm(false);
       await fetchPreferences();
-      
+
       setTimeout(() => setSaveMessage(''), 3000);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add preference');
@@ -97,16 +97,16 @@ export default function PreferencesPage() {
         body: JSON.stringify({
           id: preference.id,
           source: editingPreference.payload.source,
-          content: editingPreference.payload.content
-        })
+          content: editingPreference.payload.content,
+        }),
       });
 
       if (!response.ok) throw new Error('Failed to update preference');
-      
+
       setSaveMessage('Preference updated successfully');
       setEditingPreference(null);
       await fetchPreferences();
-      
+
       setTimeout(() => setSaveMessage(''), 3000);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update preference');
@@ -114,7 +114,9 @@ export default function PreferencesPage() {
   };
 
   const handleDeletePreference = async (preference: Preference) => {
-    if (!confirm(`Are you sure you want to delete the preference "${preference.payload.source}"?`)) {
+    if (
+      !confirm(`Are you sure you want to delete the preference "${preference.payload.source}"?`)
+    ) {
       return;
     }
 
@@ -122,14 +124,14 @@ export default function PreferencesPage() {
       const response = await fetch('/api/global/preferences', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ source: preference.payload.source })
+        body: JSON.stringify({ source: preference.payload.source }),
       });
 
       if (!response.ok) throw new Error('Failed to delete preference');
-      
+
       setSaveMessage('Preference deleted successfully');
       await fetchPreferences();
-      
+
       setTimeout(() => setSaveMessage(''), 3000);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete preference');
@@ -138,21 +140,35 @@ export default function PreferencesPage() {
 
   const renderPreferenceContent = (content: string) => {
     // Simple markdown-like rendering for display
-    return content
-      .split('\n')
-      .map((line, index) => {
-        if (line.startsWith('# ')) {
-          return <h2 key={index} className="text-lg font-semibold text-gray-900 mt-4 mb-2">{line.substring(2)}</h2>;
-        } else if (line.startsWith('## ')) {
-          return <h3 key={index} className="text-md font-medium text-gray-800 mt-3 mb-1">{line.substring(3)}</h3>;
-        } else if (line.startsWith('- ')) {
-          return <li key={index} className="text-sm text-gray-600 ml-4">{line.substring(2)}</li>;
-        } else if (line.trim()) {
-          return <p key={index} className="text-sm text-gray-600 mb-1">{line}</p>;
-        } else {
-          return <br key={index} />;
-        }
-      });
+    return content.split('\n').map((line, index) => {
+      if (line.startsWith('# ')) {
+        return (
+          <h2 key={index} className="text-lg font-semibold text-gray-900 mt-4 mb-2">
+            {line.substring(2)}
+          </h2>
+        );
+      } else if (line.startsWith('## ')) {
+        return (
+          <h3 key={index} className="text-md font-medium text-gray-800 mt-3 mb-1">
+            {line.substring(3)}
+          </h3>
+        );
+      } else if (line.startsWith('- ')) {
+        return (
+          <li key={index} className="text-sm text-gray-600 ml-4">
+            {line.substring(2)}
+          </li>
+        );
+      } else if (line.trim()) {
+        return (
+          <p key={index} className="text-sm text-gray-600 mb-1">
+            {line}
+          </p>
+        );
+      } else {
+        return <br key={index} />;
+      }
+    });
   };
 
   const getPreferenceIcon = (source: string) => {
@@ -217,10 +233,13 @@ export default function PreferencesPage() {
                 <GlobeAltIcon className="h-6 w-6 text-purple-600" />
               </div>
               <div className="flex-1">
-                <h2 className="text-xl font-semibold text-gray-900 mb-2">Global User Preferences</h2>
+                <h2 className="text-xl font-semibold text-gray-900 mb-2">
+                  Global User Preferences
+                </h2>
                 <p className="text-gray-600 mb-4">
-                  Configure universal development preferences, tooling choices, and workflow settings that apply across all projects. 
-                  These preferences guide development decisions and tool configurations.
+                  Configure universal development preferences, tooling choices, and workflow
+                  settings that apply across all projects. These preferences guide development
+                  decisions and tool configurations.
                 </p>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
@@ -257,11 +276,10 @@ export default function PreferencesPage() {
 
           {/* Add Preference Button */}
           <div className="flex justify-between items-center">
-            <h3 className="text-lg font-semibold text-gray-900">Current Preferences ({preferences.length})</h3>
-            <button
-              onClick={() => setShowAddForm(!showAddForm)}
-              className="btn btn-primary"
-            >
+            <h3 className="text-lg font-semibold text-gray-900">
+              Current Preferences ({preferences.length})
+            </h3>
+            <button onClick={() => setShowAddForm(!showAddForm)} className="btn btn-primary">
               <PlusIcon className="h-4 w-4 mr-2" />
               Add New Preference
             </button>
@@ -300,21 +318,24 @@ export default function PreferencesPage() {
 - Git commit format: Conventional Commits
 - Branch naming: feature/issue-number-description`}
                     value={newPreference.content}
-                    onChange={(e) => setNewPreference({ ...newPreference, content: e.target.value })}
+                    onChange={(e) =>
+                      setNewPreference({ ...newPreference, content: e.target.value })
+                    }
                   />
                   <p className="text-xs text-gray-500 mt-1">
-                    Use markdown formatting. These preferences will be used by development tools and AI assistants.
+                    Use markdown formatting. These preferences will be used by development tools and
+                    AI assistants.
                   </p>
                 </div>
                 <div className="flex gap-3">
                   <button onClick={handleAddPreference} className="btn btn-primary">
                     Save Preference
                   </button>
-                  <button 
+                  <button
                     onClick={() => {
                       setShowAddForm(false);
                       setNewPreference({ source: '', content: '' });
-                    }} 
+                    }}
                     className="btn btn-secondary"
                   >
                     Cancel
@@ -352,11 +373,10 @@ export default function PreferencesPage() {
               <div className="text-center py-8">
                 <UserCircleIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                 <h3 className="text-lg font-medium text-gray-900 mb-2">No Preferences Found</h3>
-                <p className="text-gray-600 mb-4">Get started by adding your first user preference.</p>
-                <button
-                  onClick={() => setShowAddForm(true)}
-                  className="btn btn-primary"
-                >
+                <p className="text-gray-600 mb-4">
+                  Get started by adding your first user preference.
+                </p>
+                <button onClick={() => setShowAddForm(true)} className="btn btn-primary">
                   <PlusIcon className="h-4 w-4 mr-2" />
                   Add First Preference
                 </button>
@@ -368,12 +388,19 @@ export default function PreferencesPage() {
                 <div key={preference.id} className="card">
                   <div className="flex items-start justify-between mb-4">
                     <div className="flex items-center gap-3">
-                      <div className={twMerge("p-2 rounded-lg", getPreferenceColor(preference.payload.source))}>
+                      <div
+                        className={twMerge(
+                          'p-2 rounded-lg',
+                          getPreferenceColor(preference.payload.source)
+                        )}
+                      >
                         {getPreferenceIcon(preference.payload.source)}
                       </div>
                       <div>
                         <h4 className="font-semibold text-gray-900">{preference.payload.source}</h4>
-                        <p className="text-sm text-gray-500">Version {preference.version} • Global Scope</p>
+                        <p className="text-sm text-gray-500">
+                          Version {preference.version} • Global Scope
+                        </p>
                       </div>
                     </div>
                     <div className="flex gap-2">
@@ -402,10 +429,12 @@ export default function PreferencesPage() {
                           type="text"
                           className="input"
                           value={editingPreference.payload.source}
-                          onChange={(e) => setEditingPreference({
-                            ...editingPreference,
-                            payload: { ...editingPreference.payload, source: e.target.value }
-                          })}
+                          onChange={(e) =>
+                            setEditingPreference({
+                              ...editingPreference,
+                              payload: { ...editingPreference.payload, source: e.target.value },
+                            })
+                          }
                         />
                       </div>
                       <div>
@@ -413,10 +442,12 @@ export default function PreferencesPage() {
                         <textarea
                           className="input min-h-[200px] font-mono text-sm"
                           value={editingPreference.payload.content}
-                          onChange={(e) => setEditingPreference({
-                            ...editingPreference,
-                            payload: { ...editingPreference.payload, content: e.target.value }
-                          })}
+                          onChange={(e) =>
+                            setEditingPreference({
+                              ...editingPreference,
+                              payload: { ...editingPreference.payload, content: e.target.value },
+                            })
+                          }
                         />
                       </div>
                       <div className="flex gap-3">

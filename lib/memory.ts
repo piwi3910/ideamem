@@ -56,10 +56,12 @@ interface IngestParams {
   scope?: 'global' | 'project'; // Optional scope specification
 }
 
-export async function ingest(params: IngestParams): Promise<{ success: boolean; vectors_added: number; project_id: string }> {
+export async function ingest(
+  params: IngestParams
+): Promise<{ success: boolean; vectors_added: number; project_id: string }> {
   await ensureCollectionExists(); // Ensure collection exists before proceeding
   const { content, source, type, language, project_id, scope } = params;
-  
+
   // Determine the effective project_id
   let effectiveProjectId: string;
   if (scope === 'global' || (!project_id && !scope)) {
@@ -69,17 +71,17 @@ export async function ingest(params: IngestParams): Promise<{ success: boolean; 
   } else {
     effectiveProjectId = 'global';
   }
-  
+
   const qdrant = await getQdrantClient();
 
   // Use the new multi-language parser system
   const parseResult = parserFactory.parse(content, source, language);
-  
+
   let chunks: Array<{ content: string; metadata?: any }> = [];
-  
+
   if (parseResult.success && parseResult.chunks.length > 0) {
     // Use semantic chunks from the parser
-    chunks = parseResult.chunks.map(chunk => ({
+    chunks = parseResult.chunks.map((chunk) => ({
       content: chunk.content,
       metadata: {
         type: chunk.type,
@@ -94,17 +96,17 @@ export async function ingest(params: IngestParams): Promise<{ success: boolean; 
         async: chunk.metadata.async,
         static: chunk.metadata.static,
         parameters: chunk.metadata.parameters || [],
-        decorators: chunk.metadata.decorators || []
-      }
+        decorators: chunk.metadata.decorators || [],
+      },
     }));
   } else {
     // Fallback to simple chunking if parsing fails
     console.warn(`Parsing failed for ${source}, using fallback chunking:`, parseResult.error);
-    const simpleChunks = content.split('\n\n').filter(chunk => chunk.trim().length > 0);
+    const simpleChunks = content.split('\n\n').filter((chunk) => chunk.trim().length > 0);
     if (simpleChunks.length === 0) {
       simpleChunks.push(content);
     }
-    chunks = simpleChunks.map(chunk => ({ content: chunk }));
+    chunks = simpleChunks.map((chunk) => ({ content: chunk }));
   }
 
   const points = [];
@@ -114,9 +116,9 @@ export async function ingest(params: IngestParams): Promise<{ success: boolean; 
     points.push({
       id: uuidv4(),
       vector: embedding,
-      payload: { 
-        ...params, 
-        content: chunk.content, 
+      payload: {
+        ...params,
+        content: chunk.content,
         project_id: effectiveProjectId,
         scope: effectiveProjectId === 'global' ? 'global' : 'project',
         // Add semantic metadata if available
@@ -132,8 +134,8 @@ export async function ingest(params: IngestParams): Promise<{ success: boolean; 
           is_async: chunk.metadata.async,
           is_static: chunk.metadata.static,
           parameters: chunk.metadata.parameters,
-          decorators: chunk.metadata.decorators
-        })
+          decorators: chunk.metadata.decorators,
+        }),
       },
     });
   }
@@ -162,12 +164,14 @@ export async function retrieve(params: RetrieveParams): Promise<any[]> {
 
   // Build filter conditions
   const filterConditions: any[] = [];
-  
+
   // Add custom filters
   if (filters) {
-    filterConditions.push(...Object.entries(filters).map(([key, value]) => ({ key, match: { value } })));
+    filterConditions.push(
+      ...Object.entries(filters).map(([key, value]) => ({ key, match: { value } }))
+    );
   }
-  
+
   // Add project and scope filtering
   if (scope === 'global') {
     filterConditions.push({ key: 'project_id', match: { value: 'global' } });
@@ -181,11 +185,13 @@ export async function retrieve(params: RetrieveParams): Promise<any[]> {
         vector: query_vector,
         limit: 5,
         filter: {
-          must: filters ? Object.entries(filters).map(([key, value]) => ({ key, match: { value } })) : [],
+          must: filters
+            ? Object.entries(filters).map(([key, value]) => ({ key, match: { value } }))
+            : [],
           should: [
             { key: 'project_id', match: { value: 'global' } },
-            { key: 'project_id', match: { value: project_id } }
-          ]
+            { key: 'project_id', match: { value: project_id } },
+          ],
         },
       });
       return searchResult;
@@ -193,7 +199,7 @@ export async function retrieve(params: RetrieveParams): Promise<any[]> {
       filterConditions.push({ key: 'project_id', match: { value: 'global' } });
     }
   }
-  
+
   const searchResult = await qdrant.search(COLLECTION_NAME, {
     vector: query_vector,
     limit: 5,
@@ -210,7 +216,9 @@ interface DeleteSourceParams {
   scope?: 'global' | 'project'; // Optional scope specification
 }
 
-export async function deleteSource(params: DeleteSourceParams): Promise<{ success: boolean; project_id: string }> {
+export async function deleteSource(
+  params: DeleteSourceParams
+): Promise<{ success: boolean; project_id: string }> {
   await ensureCollectionExists();
   const { source, project_id, scope } = params;
   const qdrant = await getQdrantClient();
@@ -249,27 +257,29 @@ export async function deleteSource(params: DeleteSourceParams): Promise<{ succes
 export async function listProjects(): Promise<{ projects: string[] }> {
   await ensureCollectionExists();
   const qdrant = await getQdrantClient();
-  
+
   // Get all unique project_ids from the collection
   // Note: This is a simplified approach. In production, you might want to maintain a separate projects collection
   const scrollResult = await qdrant.scroll(COLLECTION_NAME, {
     limit: 1000,
     with_payload: ['project_id'],
-    with_vector: false
+    with_vector: false,
   });
-  
+
   const projectIds = new Set<string>();
   for (const point of scrollResult.points) {
     if (point.payload?.project_id) {
       projectIds.add(point.payload.project_id as string);
     }
   }
-  
+
   return { projects: Array.from(projectIds).sort() };
 }
 
 // Helper function to delete all vectors for a specific project
-export async function deleteAllProjectVectors(projectId: string): Promise<{ success: boolean; deleted_count: number }> {
+export async function deleteAllProjectVectors(
+  projectId: string
+): Promise<{ success: boolean; deleted_count: number }> {
   await ensureCollectionExists();
   const qdrant = await getQdrantClient();
 
@@ -299,7 +309,7 @@ export async function deleteAllProjectVectors(projectId: string): Promise<{ succ
       ],
     },
     with_payload: false,
-    with_vector: false
+    with_vector: false,
   });
 
   const remainingCount = scrollResult.points.length;

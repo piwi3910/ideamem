@@ -2,7 +2,6 @@ import { PrismaClient } from './generated/prisma';
 
 // Global Prisma client instance to prevent multiple connections
 declare global {
-  // eslint-disable-next-line no-var
   var prisma: PrismaClient | undefined;
 }
 
@@ -19,7 +18,7 @@ export async function initializeDatabase() {
   try {
     // Check if config exists, create default if not
     const configExists = await prisma.config.findUnique({
-      where: { id: 'default' }
+      where: { id: 'default' },
     });
 
     if (!configExists) {
@@ -27,8 +26,8 @@ export async function initializeDatabase() {
         data: {
           id: 'default',
           qdrantUrl: 'http://localhost:6333',
-          ollamaUrl: 'http://localhost:11434'
-        }
+          ollamaUrl: 'http://localhost:11434',
+        },
       });
       console.log('✅ Created default configuration');
     }

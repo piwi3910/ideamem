@@ -5,7 +5,7 @@ export async function GET() {
   try {
     const config = await getConfig();
     return NextResponse.json(config);
-  } catch (error) {
+  } catch (_error) {
     return NextResponse.json({ message: 'Failed to read configuration.' }, { status: 500 });
   }
 }
@@ -21,7 +21,7 @@ export async function POST(request: Request) {
 
     await saveConfig(newConfig);
     return NextResponse.json({ message: 'Configuration saved successfully.' });
-  } catch (error) {
+  } catch (_error) {
     return NextResponse.json({ message: 'Failed to save configuration.' }, { status: 500 });
   }
 }
