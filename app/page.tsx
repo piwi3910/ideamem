@@ -1,182 +1,456 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
-  CpuChipIcon,
-  CommandLineIcon,
-  ChartBarIcon,
-  ServerIcon,
-  Cog6ToothIcon,
   FolderIcon,
+  MagnifyingGlassIcon,
+  ServerIcon,
+  CpuChipIcon,
+  ChartBarIcon,
+  CircleStackIcon,
+  ArrowPathIcon,
 } from '@heroicons/react/24/outline';
+import MetricCard from '@/components/MetricCard';
+import RecentActivity from '@/components/RecentActivity';
 
-export default function HomePage() {
+interface DashboardMetrics {
+  overview: {
+    projectsCount: number;
+    totalQueries: number;
+    activeProjects: number;
+    dbSize: number;
+    vectorMetrics: {
+      collectionExists: boolean;
+      totalVectors: number;
+      collectionSize: number;
+      status: string;
+      segments?: number;
+      indexedVectors?: number;
+      optimizerStatus?: string;
+      indexingProgress?: number;
+      vectorsPerSegment?: number;
+    };
+  };
+  projects: {
+    total: number;
+    statusBreakdown: Record<string, number>;
+  };
+  indexing: {
+    totalJobs: number;
+    statusBreakdown: Record<string, number>;
+  };
+  content: {
+    globalRules: number;
+    globalPreferences: number;
+    totalVectors: number;
+  };
+  recentActivity: Array<{
+    id: string;
+    projectName: string;
+    status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
+    startedAt: string;
+    completedAt?: string | null;
+    progress: number;
+    vectorsAdded: number;
+  }>;
+  timestamp: string;
+}
+
+// Qdrant Performance Metrics Component
+function QdrantPerformanceSection() {
+  const [metrics, setMetrics] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const fetchQdrantMetrics = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const response = await fetch('/api/admin/qdrant-metrics');
+      if (!response.ok) throw new Error('Failed to fetch Qdrant metrics');
+      const data = await response.json();
+      setMetrics(data.metrics);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchQdrantMetrics();
+  }, []);
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-6">
-            <div className="flex items-center">
-              <CpuChipIcon className="h-8 w-8 text-primary-600" />
-              <h1 className="ml-3 text-2xl font-bold text-gray-900">IdeaMem</h1>
-              <span className="ml-2 px-2 py-1 text-xs bg-primary-100 text-primary-800 rounded-full">
-                Semantic Memory System
-              </span>
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-purple-100 rounded-lg">
+            <CpuChipIcon className="h-6 w-6 text-purple-600" />
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900">Qdrant Performance Metrics</h3>
+            <p className="text-sm text-gray-600">Vector database performance and optimization status</p>
+          </div>
+        </div>
+        <button
+          onClick={fetchQdrantMetrics}
+          disabled={loading}
+          className="px-3 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md flex items-center gap-2 disabled:opacity-50"
+        >
+          <ArrowPathIcon className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+          Refresh
+        </button>
+      </div>
+
+      {error && (
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md">
+          <p className="text-sm text-red-700">{error}</p>
+        </div>
+      )}
+
+      {loading ? (
+        <div className="animate-pulse space-y-4">
+          <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+          <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+          <div className="h-4 bg-gray-200 rounded w-2/3"></div>
+        </div>
+      ) : metrics ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {/* Collection Status */}
+          <div className="bg-blue-50 p-4 rounded-lg">
+            <h4 className="font-medium text-blue-900 mb-2">Collection Status</h4>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-blue-700">Status:</span>
+                <span className={`font-medium ${metrics.collection.status === 'green' ? 'text-green-600' : 'text-yellow-600'}`}>
+                  {metrics.collection.status}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-blue-700">Points:</span>
+                <span className="font-medium">{(metrics.collection.points_count || 0).toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-blue-700">Segments:</span>
+                <span className="font-medium">{metrics.collection.segments_count || 0}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Performance Indicators */}
+          <div className="bg-green-50 p-4 rounded-lg">
+            <h4 className="font-medium text-green-900 mb-2">Performance</h4>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-green-700">Indexing Efficiency:</span>
+                <span className="font-medium">{(metrics.performance_indicators.indexing_efficiency * 100).toFixed(1)}%</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-green-700">Indexing Progress:</span>
+                <span className="font-medium">{metrics.performance_indicators.indexing_progress.toFixed(1)}%</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-green-700">Vectors/Segment:</span>
+                <span className="font-medium">{metrics.performance_indicators.vectors_per_segment.toLocaleString()}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Collection Health */}
+          <div className="bg-purple-50 p-4 rounded-lg">
+            <h4 className="font-medium text-purple-900 mb-2">Collection Health</h4>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-purple-700">Total Vectors:</span>
+                <span className="font-medium">{metrics.performance_indicators.collection_health.total_vectors.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-purple-700">Total Segments:</span>
+                <span className="font-medium">{metrics.performance_indicators.collection_health.total_segments}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-purple-700">Optimizer:</span>
+                <span className={`font-medium ${typeof metrics.performance_indicators.collection_health.optimizer_status === 'string' && metrics.performance_indicators.collection_health.optimizer_status === 'ok' ? 'text-green-600' : 'text-gray-600'}`}>
+                  {typeof metrics.performance_indicators.collection_health.optimizer_status === 'string' 
+                    ? metrics.performance_indicators.collection_health.optimizer_status 
+                    : 'Unknown'}
+                </span>
+              </div>
             </div>
           </div>
         </div>
-      </header>
+      ) : null}
+    </div>
+  );
+}
 
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        {/* Hero Section */}
-        <div className="text-center mb-16">
-          <h2 className="text-4xl font-extrabold text-gray-900 sm:text-5xl">
-            Intelligent Code Memory
-          </h2>
-          <p className="mt-4 text-xl text-gray-600 max-w-2xl mx-auto">
-            Index, search, and retrieve your codebase using AI-powered semantic search. Built on
-            vector embeddings for intelligent code understanding.
+export default function DashboardPage() {
+  const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    fetchMetrics();
+    
+    // Refresh metrics every 30 seconds
+    const interval = setInterval(fetchMetrics, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const fetchMetrics = async () => {
+    try {
+      setError('');
+      const response = await fetch('/api/dashboard/metrics');
+      if (!response.ok) throw new Error('Failed to fetch metrics');
+      const data = await response.json();
+      setMetrics(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load metrics');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const formatBytes = (bytes: number) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-red-600 mb-4">Error loading dashboard</div>
+          <p className="text-gray-600 mb-4">{error}</p>
+          <button
+            onClick={fetchMetrics}
+            className="btn btn-primary"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+          <p className="text-gray-600 mt-1">
+            Overview of your IdeaMem semantic memory system
           </p>
         </div>
-
-        {/* Feature Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mb-12">
-          <Link href="/dashboard" className="card hover:shadow-md transition-shadow">
-            <div className="flex items-center mb-4">
-              <div className="p-3 bg-primary-100 rounded-lg">
-                <FolderIcon className="h-6 w-6 text-primary-600" />
-              </div>
-              <h3 className="ml-4 text-lg font-semibold text-gray-900">Projects</h3>
-            </div>
-            <p className="text-gray-600">
-              Manage your projects, add repositories, and control indexing with project-scoped
-              isolation.
-            </p>
-          </Link>
-
-          <Link href="/admin" className="card hover:shadow-md transition-shadow">
-            <div className="flex items-center mb-4">
-              <div className="p-3 bg-green-100 rounded-lg">
-                <Cog6ToothIcon className="h-6 w-6 text-green-600" />
-              </div>
-              <h3 className="ml-4 text-lg font-semibold text-gray-900">Configuration</h3>
-            </div>
-            <p className="text-gray-600">
-              Configure Qdrant and Ollama services, test connections, and manage system settings.
-            </p>
-          </Link>
-
-          <Link href="/test-mcp" className="card hover:shadow-md transition-shadow">
-            <div className="flex items-center mb-4">
-              <div className="p-3 bg-purple-100 rounded-lg">
-                <CommandLineIcon className="h-6 w-6 text-purple-600" />
-              </div>
-              <h3 className="ml-4 text-lg font-semibold text-gray-900">MCP Testing</h3>
-            </div>
-            <p className="text-gray-600">
-              Test MCP protocol operations, debug tool calls, and validate memory operations.
-            </p>
+        <div className="flex items-center space-x-3">
+          {metrics && (
+            <span className="text-xs text-gray-500">
+              Last updated: {new Date(metrics.timestamp).toLocaleTimeString()}
+            </span>
+          )}
+          <Link href="/dashboard" className="btn btn-primary">
+            Manage Projects
           </Link>
         </div>
+      </div>
 
-        {/* Global Management Section */}
-        <div className="mb-12">
-          <h3 className="text-2xl font-semibold text-gray-900 mb-6 text-center">
-            Global Knowledge Management
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <Link href="/rules" className="card hover:shadow-md transition-shadow">
-              <div className="flex items-center mb-4">
-                <div className="p-3 bg-blue-100 rounded-lg">
-                  <ServerIcon className="h-6 w-6 text-blue-600" />
-                </div>
-                <h4 className="ml-4 text-lg font-semibold text-gray-900">Rules</h4>
-              </div>
-              <p className="text-gray-600">
-                Manage global coding standards, style guides, and architectural constraints used by
-                MCP validation tools.
-              </p>
-            </Link>
+      {/* Key Metrics */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <MetricCard
+          title="Total Projects"
+          value={metrics?.overview.projectsCount ?? 0}
+          subtitle="Active repositories"
+          icon={<FolderIcon className="h-6 w-6" />}
+          color="blue"
+          loading={loading}
+        />
+        
+        <MetricCard
+          title="Total Queries"
+          value={metrics?.overview.totalQueries ?? 0}
+          subtitle="Across all projects"
+          icon={<MagnifyingGlassIcon className="h-6 w-6" />}
+          color="green"
+          loading={loading}
+        />
+        
+        <MetricCard
+          title="Vector Embeddings"
+          value={metrics?.content.totalVectors ?? 0}
+          subtitle="Semantic chunks"
+          icon={<CpuChipIcon className="h-6 w-6" />}
+          color="purple"
+          loading={loading}
+        />
+        
+        <MetricCard
+          title="Database Size"
+          value={metrics ? formatBytes(metrics.overview.dbSize) : '0 KB'}
+          subtitle="SQLite + Vector DB"
+          icon={<CircleStackIcon className="h-6 w-6" />}
+          color="gray"
+          loading={loading}
+        />
+      </div>
 
-            <Link href="/preferences" className="card hover:shadow-md transition-shadow">
-              <div className="flex items-center mb-4">
-                <div className="p-3 bg-purple-100 rounded-lg">
-                  <Cog6ToothIcon className="h-6 w-6 text-purple-600" />
-                </div>
-                <h4 className="ml-4 text-lg font-semibold text-gray-900">Preferences</h4>
-              </div>
-              <p className="text-gray-600">
-                Configure universal development preferences, tooling choices, and workflow settings.
-              </p>
-            </Link>
+      {/* Secondary Metrics */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <MetricCard
+          title="Active Projects"
+          value={metrics?.overview.activeProjects ?? 0}
+          subtitle="Queried this week"
+          icon={<ChartBarIcon className="h-6 w-6" />}
+          color="yellow"
+          loading={loading}
+        />
+        
+        <MetricCard
+          title="Global Rules"
+          value={metrics?.content.globalRules ?? 0}
+          subtitle="Coding standards"
+          icon={<ServerIcon className="h-6 w-6" />}
+          color="blue"
+          loading={loading}
+        />
+        
+        <MetricCard
+          title="Global Preferences"
+          value={metrics?.content.globalPreferences ?? 0}
+          subtitle="System preferences"
+          icon={<CpuChipIcon className="h-6 w-6" />}
+          color="green"
+          loading={loading}
+        />
+      </div>
 
-            <Link href="/docs" className="card hover:shadow-md transition-shadow">
-              <div className="flex items-center mb-4">
-                <div className="p-3 bg-indigo-100 rounded-lg">
-                  <ChartBarIcon className="h-6 w-6 text-indigo-600" />
-                </div>
-                <h4 className="ml-4 text-lg font-semibold text-gray-900">Documentation</h4>
-              </div>
-              <p className="text-gray-600">
-                Add Git repositories with comprehensive documentation for languages and frameworks.
-              </p>
-            </Link>
-          </div>
-        </div>
+      {/* Qdrant Performance Metrics */}
+      <QdrantPerformanceSection />
 
-        {/* Stats Section */}
-        <div className="card">
-          <h3 className="text-lg font-semibold text-gray-900 mb-6">System Overview</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="text-center">
-              <div className="flex items-center justify-center w-12 h-12 bg-blue-100 rounded-full mx-auto mb-3">
-                <ServerIcon className="h-6 w-6 text-blue-600" />
-              </div>
-              <h4 className="text-sm font-medium text-gray-900">Vector Database</h4>
-              <p className="text-xs text-gray-500 mt-1">Qdrant for semantic search</p>
+      {/* Content Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* System Status */}
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">System Status</h3>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-gray-600">Vector Database</span>
+              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                metrics?.overview.vectorMetrics.collectionExists
+                  ? 'bg-green-100 text-green-800'
+                  : 'bg-red-100 text-red-800'
+              }`}>
+                {metrics?.overview.vectorMetrics.collectionExists ? 'Connected' : 'Disconnected'}
+              </span>
             </div>
-            <div className="text-center">
-              <div className="flex items-center justify-center w-12 h-12 bg-green-100 rounded-full mx-auto mb-3">
-                <CpuChipIcon className="h-6 w-6 text-green-600" />
-              </div>
-              <h4 className="text-sm font-medium text-gray-900">AI Embeddings</h4>
-              <p className="text-xs text-gray-500 mt-1">Ollama with nomic-embed-text</p>
+            
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-gray-600">Collection Status</span>
+              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                metrics?.overview.vectorMetrics.status === 'green'
+                  ? 'bg-green-100 text-green-800'
+                  : 'bg-yellow-100 text-yellow-800'
+              }`}>
+                {metrics?.overview.vectorMetrics.status || 'Unknown'}
+              </span>
             </div>
-            <div className="text-center">
-              <div className="flex items-center justify-center w-12 h-12 bg-purple-100 rounded-full mx-auto mb-3">
-                <ChartBarIcon className="h-6 w-6 text-purple-600" />
+
+            {/* Performance Metrics */}
+            {metrics?.overview.vectorMetrics.segments && (
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-600">Segments</span>
+                <span className="text-xs text-gray-500">
+                  {metrics.overview.vectorMetrics.segments} segments
+                </span>
               </div>
-              <h4 className="text-sm font-medium text-gray-900">MCP Protocol</h4>
-              <p className="text-xs text-gray-500 mt-1">JSON-RPC 2.0 compliant</p>
+            )}
+
+            {metrics?.overview.vectorMetrics.indexingProgress && (
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-600">Indexing Progress</span>
+                <span className="text-xs text-gray-500">
+                  {metrics.overview.vectorMetrics.indexingProgress.toFixed(1)}%
+                </span>
+              </div>
+            )}
+
+            {metrics?.overview.vectorMetrics.optimizerStatus && metrics.overview.vectorMetrics.optimizerStatus !== 'unknown' && (
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-600">Optimizer</span>
+                <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                  metrics.overview.vectorMetrics.optimizerStatus === 'ok'
+                    ? 'bg-green-100 text-green-800'
+                    : 'bg-yellow-100 text-yellow-800'
+                }`}>
+                  {metrics.overview.vectorMetrics.optimizerStatus}
+                </span>
+              </div>
+            )}
+            
+            <div className="pt-2 border-t border-gray-200">
+              <div className="text-sm text-gray-600 mb-2">Quick Actions</div>
+              <div className="space-y-2">
+                <Link
+                  href="/admin"
+                  className="block w-full text-center py-2 px-3 bg-gray-100 hover:bg-gray-200 rounded text-sm font-medium text-gray-700"
+                >
+                  System Configuration
+                </Link>
+                <Link
+                  href="/test-mcp"
+                  className="block w-full text-center py-2 px-3 bg-purple-100 hover:bg-purple-200 rounded text-sm font-medium text-purple-700"
+                >
+                  Test MCP Protocol
+                </Link>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Quick Actions */}
-        <div className="mt-12 text-center">
-          <h3 className="text-lg font-semibold text-gray-900 mb-6">Quick Actions</h3>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link href="/dashboard" className="btn btn-primary">
-              Manage Projects
-            </Link>
-            <Link href="/admin" className="btn btn-secondary">
-              System Configuration
-            </Link>
+        {/* Project Breakdown */}
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Project Status</h3>
+          <div className="space-y-3">
+            {metrics && Object.entries(metrics.projects.statusBreakdown).map(([status, count]) => (
+              <div key={status} className="flex items-center justify-between">
+                <span className="text-sm text-gray-600 capitalize">
+                  {status.toLowerCase().replace('_', ' ')}
+                </span>
+                <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                  status === 'COMPLETED' ? 'bg-green-100 text-green-800' :
+                  status === 'INDEXING' ? 'bg-blue-100 text-blue-800' :
+                  status === 'ERROR' ? 'bg-red-100 text-red-800' :
+                  'bg-gray-100 text-gray-800'
+                }`}>
+                  {count}
+                </span>
+              </div>
+            ))}
+            
+            <div className="pt-2 border-t border-gray-200">
+              <Link
+                href="/dashboard"
+                className="block w-full text-center py-2 px-3 bg-blue-100 hover:bg-blue-200 rounded text-sm font-medium text-blue-700"
+              >
+                Manage All Projects
+              </Link>
+            </div>
           </div>
         </div>
-      </main>
 
-      {/* Footer */}
-      <footer className="bg-white border-t border-gray-200 mt-16">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="text-center text-gray-500 text-sm">
-            <p>IdeaMem - Semantic Memory System</p>
-            <p className="mt-1">Built with Next.js, Qdrant, and Ollama</p>
-          </div>
+        {/* Recent Activity */}
+        <div className="lg:col-span-1">
+          <RecentActivity
+            activities={metrics?.recentActivity ?? []}
+            loading={loading}
+          />
         </div>
-      </footer>
+      </div>
     </div>
   );
 }

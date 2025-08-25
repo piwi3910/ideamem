@@ -13,6 +13,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { twMerge } from 'tailwind-merge';
 
+
 interface AppConfig {
   qdrantUrl: string;
   ollamaUrl: string;
@@ -157,46 +158,36 @@ export default function AdminPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-6">
-            <div>
-              <Link href="/" className="text-2xl font-bold text-gray-900 hover:text-primary-600">
-                IdeaMem
-              </Link>
-              <p className="text-gray-600 mt-1">System Configuration</p>
-            </div>
-            <Link href="/dashboard" className="btn btn-secondary">
-              Back to Dashboard
-            </Link>
-          </div>
+    <div className="space-y-6">
+      {/* Page Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">System Administration</h1>
+          <p className="text-gray-600 mt-1">
+            Configure external services and system health
+          </p>
         </div>
-      </header>
-
-      {/* Main Content */}
-      <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="space-y-8">
-          {/* Introduction */}
-          <div className="card">
-            <div className="flex items-start gap-4">
-              <div className="p-2 bg-primary-100 rounded-lg">
-                <ServerIcon className="h-6 w-6 text-primary-600" />
-              </div>
-              <div>
-                <h2 className="text-xl font-semibold text-gray-900 mb-2">Service Configuration</h2>
+      </div>
+      
+      {/* Introduction */}
+      <div className="card">
+        <div className="flex items-start gap-4">
+          <div className="p-2 bg-primary-100 rounded-lg">
+            <ServerIcon className="h-6 w-6 text-primary-600" />
+          </div>
+          <div>
+            <h2 className="text-xl font-semibold text-gray-900 mb-2">Service Configuration</h2>
                 <p className="text-gray-600">
                   Configure and test connections to the required services for IdeaMem to function
                   properly.
                 </p>
-              </div>
-            </div>
           </div>
+        </div>
+      </div>
 
-          {/* Configuration Form */}
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Qdrant Configuration */}
+      {/* Configuration Form */}
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Qdrant Configuration */}
             <div className="card">
               <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-3">
@@ -446,10 +437,8 @@ export default function AdminPage() {
                 <CheckCircleIcon className="h-5 w-5 text-green-500" />
                 <span className="text-green-700">{saveMessage}</span>
               </div>
-            )}
-          </form>
-        </div>
-      </main>
+        )}
+      </form>
     </div>
   );
 }

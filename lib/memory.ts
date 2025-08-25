@@ -6,9 +6,45 @@ import { parserFactory, ParseResult, SemanticChunk } from './parsing';
 const COLLECTION_NAME = 'ideamem_memory';
 
 // Helper function to get a configured Qdrant client
-async function getQdrantClient(): Promise<QdrantClient> {
+export async function getQdrantClient(): Promise<QdrantClient> {
   const config = await getConfig();
   return new QdrantClient({ url: config.qdrantUrl });
+}
+
+// Get comprehensive Qdrant performance metrics
+export async function getQdrantMetrics() {
+  try {
+    const qdrant = await getQdrantClient();
+    
+    // Get collection info for our main collection
+    const collectionInfo = await qdrant.getCollection(COLLECTION_NAME);
+    
+    return {
+      collection: {
+        status: collectionInfo.status,
+        points_count: collectionInfo.points_count,
+        segments_count: collectionInfo.segments_count,
+        vectors_count: collectionInfo.vectors_count,
+        indexed_vectors_count: collectionInfo.indexed_vectors_count,
+        optimizer_status: collectionInfo.optimizer_status,
+        config: collectionInfo.config,
+        performance: {
+          // Basic performance metrics
+          indexed_vectors_count: collectionInfo.indexed_vectors_count || 0,
+          optimizer_status: collectionInfo.optimizer_status,
+          indexing_progress: (collectionInfo.points_count || 0) > 0 
+            ? ((collectionInfo.indexed_vectors_count || 0) / (collectionInfo.points_count || 1)) * 100
+            : 100,
+          vectors_per_segment: (collectionInfo.segments_count || 0) > 0 
+            ? Math.round((collectionInfo.points_count || 0) / (collectionInfo.segments_count || 1))
+            : 0
+        }
+      }
+    };
+  } catch (error) {
+    console.error('Failed to get Qdrant metrics:', error);
+    throw error;
+  }
 }
 
 // Helper function to ensure the Qdrant collection exists
