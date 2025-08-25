@@ -7,6 +7,8 @@ export { ParserFactory, parserFactory } from './parser-factory';
 export { TypeScriptParser } from './typescript-parser';
 export { MarkdownParser } from './markdown-parser';
 export { CSSParser } from './css-parser';
+export { SQLParser } from './sql-parser';
+export { TOMLParser } from './toml-parser';
 export { JSONParser } from './json-parser';
 export { YAMLParser } from './yaml-parser';
 export { PythonParser } from './python-parser';

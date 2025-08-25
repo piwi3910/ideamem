@@ -61,6 +61,16 @@ export interface SemanticChunk {
     properties?: string[];
     atRuleName?: string;
     atRuleParams?: string;
+    // SQL-specific metadata
+    sqlType?: string;
+    sqlKeywords?: string[];
+    // TOML-specific metadata
+    tomlSection?: string;
+    isArrayTable?: boolean;
+    tomlKey?: string;
+    tomlValue?: string;
+    valueType?: string;
+    keys?: string[];
   };
 }
 
@@ -128,6 +138,10 @@ export const SUPPORTED_LANGUAGES = {
   '.sass': 'css',
   '.less': 'css',
   '.stylus': 'css',
+  '.sql': 'sql',
+  '.ddl': 'sql',
+  '.dml': 'sql',
+  '.toml': 'toml',
   '.py': 'python',
   '.go': 'go',
   '.json': 'json',

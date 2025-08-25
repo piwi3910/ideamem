@@ -9,6 +9,8 @@ import { TerraformParser } from './terraform-parser';
 import { TypeScriptParser } from './typescript-parser';
 import { MarkdownParser } from './markdown-parser';
 import { CSSParser } from './css-parser';
+import { SQLParser } from './sql-parser';
+import { TOMLParser } from './toml-parser';
 
 export class ParserFactory {
   private parsers: Map<string, BaseParser>;
@@ -25,6 +27,8 @@ export class ParserFactory {
       new TypeScriptParser(),
       new MarkdownParser(),
       new CSSParser(),
+      new SQLParser(),
+      new TOMLParser(),
       new JSONParser(),
       new YAMLParser(),
       new PythonParser(),
