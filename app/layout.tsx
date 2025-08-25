@@ -1,6 +1,9 @@
 import './globals.css';
 import DashboardLayout from '@/components/DashboardLayout';
 
+// Auto-initialize workers on app startup
+import '@/lib/startup';
+
 export const metadata = {
   title: 'IdeaMem - Semantic Memory System',
   description: 'Intelligent code and documentation indexing with vector search',

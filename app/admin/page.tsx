@@ -34,22 +34,6 @@ export default function AdminPage() {
     message: '',
   });
   const [isTesting, setIsTesting] = useState(false);
-  const [isRunningScheduler, setIsRunningScheduler] = useState(false);
-  interface SchedulerResult {
-    success: boolean;
-    message: string;
-    projectsProcessed: number;
-    results?: Array<{
-      projectId: string;
-      projectName: string;
-      success: boolean;
-      action: string;
-      message: string;
-    }>;
-    error?: string;
-  }
-
-  const [schedulerResult, setSchedulerResult] = useState<SchedulerResult | null>(null);
 
   useEffect(() => {
     fetch('/api/admin/config')
@@ -103,28 +87,6 @@ export default function AdminPage() {
     setSaveMessage(result.message);
   };
 
-  const handleRunScheduler = async () => {
-    setIsRunningScheduler(true);
-    setSchedulerResult(null);
-
-    try {
-      const response = await fetch('/api/scheduler/run', {
-        method: 'POST',
-      });
-
-      const result = await response.json();
-      setSchedulerResult(result);
-    } catch (error) {
-      setSchedulerResult({
-        success: false,
-        message: 'Failed to run scheduler',
-        projectsProcessed: 0,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      });
-    } finally {
-      setIsRunningScheduler(false);
-    }
-  };
 
   const getStatusIcon = (status: Status['status']) => {
     const className = 'h-5 w-5';
@@ -334,185 +296,40 @@ export default function AdminPage() {
               </div>
             </div>
 
-            {/* Scheduler Management */}
-            <div className="card">
-              <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-purple-100 rounded-lg">
-                    <ClockIcon className="h-6 w-6 text-purple-600" />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-semibold text-gray-900">Scheduled Indexing</h3>
-                    <p className="text-sm text-gray-600">
-                      Manage and monitor scheduled indexing operations
-                    </p>
-                  </div>
-                </div>
-              </div>
 
-              <div className="space-y-4">
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <h4 className="font-medium text-gray-900 mb-2">Manual Scheduler Run</h4>
-                  <p className="text-sm text-gray-600 mb-3">
-                    Trigger the scheduler to check all projects and run scheduled indexing for those
-                    due.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={handleRunScheduler}
-                    disabled={isRunningScheduler}
-                    className="btn bg-purple-100 text-purple-700 hover:bg-purple-200"
-                  >
-                    {isRunningScheduler ? (
-                      <ArrowPathIcon className="h-4 w-4 animate-spin mr-2" />
-                    ) : (
-                      <ClockIcon className="h-4 w-4 mr-2" />
-                    )}
-                    {isRunningScheduler ? 'Running...' : 'Run Scheduler Now'}
-                  </button>
-                </div>
-
-                {schedulerResult && (
-                  <div
-                    className={twMerge(
-                      'p-4 rounded-lg border',
-                      schedulerResult.success
-                        ? 'bg-green-50 border-green-200'
-                        : 'bg-red-50 border-red-200'
-                    )}
-                  >
-                    <h4
-                      className={twMerge(
-                        'font-medium mb-2',
-                        schedulerResult.success ? 'text-green-900' : 'text-red-900'
-                      )}
-                    >
-                      Scheduler Result
-                    </h4>
-                    <p
-                      className={twMerge(
-                        'text-sm mb-2',
-                        schedulerResult.success ? 'text-green-700' : 'text-red-700'
-                      )}
-                    >
-                      {schedulerResult.message}
-                    </p>
-                    {schedulerResult.results && schedulerResult.results.length > 0 && (
-                      <div className="space-y-1">
-                        {schedulerResult.results.map((result, index: number) => (
-                          <div key={index} className="text-xs text-gray-600 font-mono">
-                            {result.projectName}: {result.action} - {result.message}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                <div className="bg-blue-50 rounded-lg p-4">
-                  <h4 className="font-medium text-gray-900 mb-2">Automation Setup</h4>
-                  <p className="text-sm text-gray-600 mb-3">
-                    For automatic scheduling, set up a cron job to call:
-                  </p>
-                  <code className="block text-xs font-mono bg-gray-800 text-green-400 p-3 rounded">
-                    curl -X POST http://your-domain.com/api/scheduler/run
-                  </code>
-                  <p className="text-xs text-gray-500 mt-2">
-                    Recommended: Every 5-15 minutes depending on your needs
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Queue Management */}
+            {/* Background Job Processing */}
             <div className="bg-white rounded-lg shadow-sm border border-gray-200">
               <div className="px-6 py-4 border-b border-gray-200">
-                <h3 className="text-lg font-medium text-gray-900">Queue Management (BullMQ)</h3>
+                <h3 className="text-lg font-medium text-gray-900">Background Job Processing</h3>
                 <p className="text-sm text-gray-500 mt-1">
-                  Monitor and manage background job queues for indexing and scheduling
+                  Automated indexing and scheduling with BullMQ + Redis
                 </p>
               </div>
               
-              <div className="p-6 space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Worker Controls */}
-                  <div className="space-y-3">
-                    <h4 className="font-medium text-gray-900">Workers</h4>
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          try {
-                            const response = await fetch('/api/admin/workers', {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ action: 'start' }),
-                            });
-                            const result = await response.json();
-                            alert(result.message);
-                          } catch (error) {
-                            alert('Failed to start workers');
-                          }
-                        }}
-                        className="px-3 py-1.5 text-sm bg-green-600 text-white rounded hover:bg-green-700"
-                      >
-                        Start Workers
-                      </button>
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          try {
-                            const response = await fetch('/api/admin/workers', {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ action: 'restart' }),
-                            });
-                            const result = await response.json();
-                            alert(result.message);
-                          } catch (error) {
-                            alert('Failed to restart workers');
-                          }
-                        }}
-                        className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
-                      >
-                        Restart Workers
-                      </button>
-                    </div>
+              <div className="p-6">
+                <div className="bg-green-50 rounded-lg p-4">
+                  <div className="flex items-center mb-3">
+                    <CheckCircleIcon className="h-6 w-6 text-green-500 mr-2" />
+                    <h4 className="font-medium text-green-900">✅ Fully Automated System</h4>
                   </div>
-
-                  {/* Queue Status */}
-                  <div className="space-y-3">
-                    <h4 className="font-medium text-gray-900">Queue Status</h4>
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        try {
-                          const response = await fetch('/api/admin/queues');
-                          const result = await response.json();
-                          if (result.success) {
-                            console.log('Queue Stats:', result.queueStats);
-                            alert('Queue stats logged to console');
-                          }
-                        } catch (error) {
-                          alert('Failed to get queue stats');
-                        }
-                      }}
-                      className="px-3 py-1.5 text-sm bg-purple-600 text-white rounded hover:bg-purple-700"
-                    >
-                      Check Queue Status
-                    </button>
+                  <p className="text-sm text-green-700 mb-3">
+                    All background processing is now handled automatically. No manual intervention required.
+                  </p>
+                  <div className="text-xs text-green-600 space-y-1 pl-4">
+                    <div>• Workers auto-start when the application launches</div>
+                    <div>• Indexing jobs queue automatically when projects are updated</div>
+                    <div>• Scheduled indexing runs based on each project's configured interval</div>
+                    <div>• Failed jobs retry automatically with smart backoff timing</div>
+                    <div>• Redis provides persistent job storage and coordination</div>
                   </div>
                 </div>
 
-                <div className="bg-blue-50 rounded-lg p-4">
-                  <h4 className="font-medium text-gray-900 mb-2">Queue Dashboard</h4>
-                  <p className="text-sm text-gray-600 mb-3">
-                    Background jobs are now processed by BullMQ with Redis. Workers automatically start when needed.
-                  </p>
-                  <div className="text-xs text-gray-500">
-                    • Indexing jobs run in background with progress tracking<br/>
-                    • Scheduled indexing uses Redis-based cron jobs<br/>
-                    • Failed jobs are automatically retried with exponential backoff
+                <div className="mt-4 bg-blue-50 rounded-lg p-4">
+                  <h4 className="font-medium text-gray-900 mb-2">🔧 Queue Types</h4>
+                  <div className="text-sm text-gray-600 space-y-2">
+                    <div><strong>indexing</strong> - Manual and webhook-triggered indexing jobs</div>
+                    <div><strong>scheduled-indexing</strong> - Automated recurring indexing based on project settings</div>
+                    <div><strong>cleanup</strong> - Maintenance tasks and resource cleanup</div>
                   </div>
                 </div>
               </div>

@@ -20,10 +20,8 @@ export async function initializeApp() {
   }
 }
 
-// Auto-start workers when this module is imported
-if (process.env.NODE_ENV === 'production' || process.env.AUTO_START_WORKERS === 'true') {
-  // Delay startup to ensure Redis is available
-  setTimeout(() => {
-    initializeApp().catch(console.error);
-  }, 2000);
-}
+// Auto-start workers when this module is imported in any environment
+// Delay startup to ensure Redis is available
+setTimeout(() => {
+  initializeApp().catch(console.error);
+}, 3000); // Increased delay to ensure all services are ready
