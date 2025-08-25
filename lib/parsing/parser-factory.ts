@@ -8,6 +8,7 @@ import { AnsibleParser } from './ansible-parser';
 import { TerraformParser } from './terraform-parser';
 import { TypeScriptParser } from './typescript-parser';
 import { MarkdownParser } from './markdown-parser';
+import { CSSParser } from './css-parser';
 
 export class ParserFactory {
   private parsers: Map<string, BaseParser>;
@@ -23,6 +24,7 @@ export class ParserFactory {
     const parsers = [
       new TypeScriptParser(),
       new MarkdownParser(),
+      new CSSParser(),
       new JSONParser(),
       new YAMLParser(),
       new PythonParser(),

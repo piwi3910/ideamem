@@ -56,6 +56,11 @@ export interface SemanticChunk {
     // TypeScript-specific metadata  
     nodeKind?: string;
     exported?: boolean;
+    // CSS-specific metadata
+    selector?: string;
+    properties?: string[];
+    atRuleName?: string;
+    atRuleParams?: string;
   };
 }
 
@@ -118,6 +123,11 @@ export const SUPPORTED_LANGUAGES = {
   '.mdown': 'markdown',
   '.mkd': 'markdown',
   '.mdx': 'markdown',
+  '.css': 'css',
+  '.scss': 'css',
+  '.sass': 'css',
+  '.less': 'css',
+  '.stylus': 'css',
   '.py': 'python',
   '.go': 'go',
   '.json': 'json',
