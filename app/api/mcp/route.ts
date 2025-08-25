@@ -1,454 +1,640 @@
 import { NextResponse } from 'next/server';
-import { ingest, retrieve, deleteSource, listProjects } from '@/lib/memory';
-import { trackQuery, getProjectByToken } from '@/lib/projects';
-import { indexSingleFile, reindexSingleFile, fullReindex, scheduledIncrementalIndexing } from '@/lib/indexing';
+import { ingest, retrieve, deleteSource } from '@/lib/memory';
+import { trackQuery } from '@/lib/projects';
+import { validateBearerToken } from '@/app/api/auth/[...nextauth]/route';
+import {
+  indexSingleFile,
+  reindexSingleFile,
+  fullReindex,
+  scheduledIncrementalIndexing,
+} from '@/lib/indexing';
 import { deleteAllProjectVectors } from '@/lib/memory';
+import { SearchResultsCache } from '@/lib/cache';
+import { HybridSearchEngine } from '@/lib/hybrid-search';
+import { QueryEnhancer } from '@/lib/query-enhancement';
+import { RelationshipAnalyzer } from '@/lib/relationship-analyzer';
 
 // Define ToolSchema objects for our custom methods
 const INGEST_TOOL_SCHEMA = {
-  name: "codebase.store",
-  description: "🤖 AI ASSISTANT: Store code/docs for future semantic search. WHEN TO USE: After reading important files, discovering key implementations, or learning new patterns. Creates searchable knowledge base. 💡 TIP: Use this when you find solutions, patterns, or important code - makes future searches much more effective than re-reading files. ⚠️ CONTENT TYPE GUIDANCE: Use 'rule' for coding standards/constraints, 'user_preference' for settings/preferences, 'code' for implementations, 'documentation' for guides, 'conversation' for discussions.",
+  name: 'codebase.store',
+  description:
+    "🤖 AI ASSISTANT: Store code/docs for future semantic search. WHEN TO USE: After reading important files, discovering key implementations, or learning new patterns. Creates searchable knowledge base. 💡 TIP: Use this when you find solutions, patterns, or important code - makes future searches much more effective than re-reading files. ⚠️ CONTENT TYPE GUIDANCE: Use 'rule' for coding standards/constraints, 'user_preference' for settings/preferences, 'code' for implementations, 'documentation' for guides, 'conversation' for discussions.",
   inputSchema: {
-    type: "object",
+    type: 'object',
     properties: {
-      content: { 
-        type: "string", 
-        description: "The raw text or code content to be ingested. Can be entire files, code snippets, documentation sections, or conversation transcripts. For code, functions and classes will be automatically extracted and chunked separately. Examples: source code files, README content, API documentation, chat conversations." 
+      content: {
+        type: 'string',
+        description:
+          'The raw text or code content to be ingested. Can be entire files, code snippets, documentation sections, or conversation transcripts. For code, functions and classes will be automatically extracted and chunked separately. Examples: source code files, README content, API documentation, chat conversations.',
       },
-      source: { 
-        type: "string", 
-        description: "Unique identifier for the content origin. Use consistent naming like file paths (src/components/Button.tsx), URLs (github.com/user/repo/README.md), or identifiers (conversation-2024-01-15). This is used for updates and deletions, so keep it stable and unique." 
+      source: {
+        type: 'string',
+        description:
+          'Unique identifier for the content origin. Use consistent naming like file paths (src/components/Button.tsx), URLs (github.com/user/repo/README.md), or identifiers (conversation-2024-01-15). This is used for updates and deletions, so keep it stable and unique.',
       },
-      type: { 
-        type: "string", 
-        enum: ["code", "documentation", "conversation", "user_preference", "rule"], 
-        description: "Content category that affects processing: 'code' enables AST parsing for JS/TS with function/class extraction, 'documentation' for guides/specs/READMEs, 'conversation' for chat logs/discussions, 'user_preference' for settings/configurations, 'rule' for business rules and coding constraints. CRITICAL: Use 'rule' for coding standards, style guides, architecture constraints, security policies. Use 'user_preference' for IDE settings, team preferences, workflow choices. These types get PRIORITY in search results to ensure compliance." 
+      type: {
+        type: 'string',
+        enum: ['code', 'documentation', 'conversation', 'user_preference', 'rule'],
+        description:
+          "Content category that affects processing: 'code' enables AST parsing for JS/TS with function/class extraction, 'documentation' for guides/specs/READMEs, 'conversation' for chat logs/discussions, 'user_preference' for settings/configurations, 'rule' for business rules and coding constraints. CRITICAL: Use 'rule' for coding standards, style guides, architecture constraints, security policies. Use 'user_preference' for IDE settings, team preferences, workflow choices. These types get PRIORITY in search results to ensure compliance.",
       },
-      language: { 
-        type: "string", 
-        description: "Programming language (typescript, javascript, python, rust, go, java, c, cpp, etc.) or markup language (markdown, html, json, yaml, xml, etc.). For code content, determines parsing strategy. Use 'text' for plain text content. Be specific for better chunking." 
+      language: {
+        type: 'string',
+        description:
+          "Programming language (typescript, javascript, python, rust, go, java, c, cpp, etc.) or markup language (markdown, html, json, yaml, xml, etc.). For code content, determines parsing strategy. Use 'text' for plain text content. Be specific for better chunking.",
       },
-      project_id: {
-        type: "string",
-        description: "Project identifier for isolation. Use unique IDs like 'my-project-name' or UUIDs. If not provided, content is stored in global scope accessible across all projects."
-      },
-      scope: {
-        type: "string",
-        enum: ["global", "project"],
-        description: "Storage scope: 'global' for cross-project accessibility (default), 'project' for project-specific content. When scope='project', project_id is required."
-      }
     },
-    required: ["content", "source", "type", "language"]
-  }
+    required: ['content', 'source', 'type', 'language'],
+  },
 };
 
 const RETRIEVE_TOOL_SCHEMA = {
-  name: "codebase.search",
-  description: "🔍 AI ASSISTANT: SEARCH FIRST before Read/Grep! Finds code by meaning, not just keywords. EXAMPLES: 'authentication patterns', 'error handling in APIs', 'React component lifecycle', 'database queries', 'webhook validation'. 🚀 MUCH FASTER than grep - understands context, finds similar implementations even with different names. 🎯 SMART WORKFLOW: Always search for 'rules' and 'user_preferences' first when starting work to understand constraints and preferences before coding.",
+  name: 'codebase.search',
+  description:
+    "🔍 AI ASSISTANT: SEARCH FIRST before Read/Grep! Finds code by meaning, not just keywords. EXAMPLES: 'authentication patterns', 'error handling in APIs', 'React component lifecycle', 'database queries', 'webhook validation'. 🚀 MUCH FASTER than grep - understands context, finds similar implementations even with different names. 🎯 SMART WORKFLOW: Always search for 'rules' and 'user_preferences' first when starting work to understand constraints and preferences before coding.",
   inputSchema: {
-    type: "object",
+    type: 'object',
     properties: {
-      query: { 
-        type: "string", 
-        description: "Natural language query describing what you're looking for. Can be conceptual ('authentication logic', 'error handling patterns'), specific ('how to calculate cart total', 'user login function'), or technical ('React components that handle forms', 'API endpoints for user management'). More specific and detailed queries yield better results." 
+      query: {
+        type: 'string',
+        description:
+          "Natural language query describing what you're looking for. Can be conceptual ('authentication logic', 'error handling patterns'), specific ('how to calculate cart total', 'user login function'), or technical ('React components that handle forms', 'API endpoints for user management'). More specific and detailed queries yield better results.",
       },
-      filters: { 
-        type: "object", 
-        description: "Optional key-value filters to narrow search scope. Common patterns: {\"type\": \"code\"} for code only, {\"language\": \"typescript\"} for specific language, {\"source\": \"src/components/\"} for source path matching. Multiple filters are AND-combined. Filter keys: 'type', 'language', 'source'.", 
+      filters: {
+        type: 'object',
+        description:
+          'Optional key-value filters to narrow search scope. Common patterns: {"type": "code"} for code only, {"language": "typescript"} for specific language, {"source": "src/components/"} for source path matching. Multiple filters are AND-combined. Filter keys: \'type\', \'language\', \'source\'.',
         additionalProperties: true,
         properties: {
-          type: { type: "string", enum: ["code", "documentation", "conversation", "user_preference", "rule"], description: "Filter by content type" },
-          language: { type: "string", description: "Filter by programming/markup language" },
-          source: { type: "string", description: "Filter by source path/identifier (supports partial matching)" }
-        }
+          type: {
+            type: 'string',
+            enum: ['code', 'documentation', 'conversation', 'user_preference', 'rule'],
+            description: 'Filter by content type',
+          },
+          language: { type: 'string', description: 'Filter by programming/markup language' },
+          source: {
+            type: 'string',
+            description: 'Filter by source path/identifier (supports partial matching)',
+          },
+        },
       },
-      project_id: {
-        type: "string",
-        description: "Project identifier to search within. If not provided, searches global scope only."
-      },
-      scope: {
-        type: "string",
-        enum: ["global", "project", "all"],
-        description: "Search scope: 'global' searches only global content, 'project' searches only project-specific content (requires project_id), 'all' searches both global and project content."
-      }
     },
-    required: ["query"]
-  }
+    required: ['query'],
+  },
 };
 
 const DELETE_SOURCE_TOOL_SCHEMA = {
-  name: "codebase.forget",
-  description: "🗑️ AI ASSISTANT: Remove outdated/deleted code from search index. WHEN TO USE: After deleting files, major refactors, or when search returns obsolete results. Keeps search results clean and current. 💡 TIP: Use before re-indexing renamed or moved files.",
+  name: 'codebase.forget',
+  description:
+    '🗑️ AI ASSISTANT: Remove outdated/deleted code from search index. WHEN TO USE: After deleting files, major refactors, or when search returns obsolete results. Keeps search results clean and current. 💡 TIP: Use before re-indexing renamed or moved files.',
   inputSchema: {
-    type: "object",
+    type: 'object',
     properties: {
-      source: { 
-        type: "string", 
-        description: "Exact source identifier to delete. Must match the 'source' field used during ingestion exactly (case-sensitive). Examples: 'src/components/Button.tsx', 'docs/api.md', 'conversation-2024-01-15'. Use memory.retrieve first to verify exact source names if unsure. Partial matches are not supported." 
+      source: {
+        type: 'string',
+        description:
+          "Exact source identifier to delete. Must match the 'source' field used during ingestion exactly (case-sensitive). Examples: 'src/components/Button.tsx', 'docs/api.md', 'conversation-2024-01-15'. Use memory.retrieve first to verify exact source names if unsure. Partial matches are not supported.",
       },
-      project_id: {
-        type: "string",
-        description: "Project identifier for the source to delete. If not provided, deletes from global scope."
-      },
-      scope: {
-        type: "string",
-        enum: ["global", "project"],
-        description: "Scope to delete from: 'global' for global content, 'project' for project-specific content (requires project_id)."
-      }
     },
-    required: ["source"]
-  }
+    required: ['source'],
+  },
 };
 
-const LIST_PROJECTS_TOOL_SCHEMA = {
-  name: "codebase.list_projects", 
-  description: "📋 AI ASSISTANT: List all searchable projects. WHEN TO USE: Starting work on unfamiliar codebase, checking what's available to search, or verifying project scope. Shows which codebases have indexed content.",
-  inputSchema: {
-    type: "object",
-    properties: {},
-    required: []
-  }
-};
 
 const INDEX_FILE_TOOL_SCHEMA = {
-  name: "codebase.index_file",
-  description: "⚡ AI ASSISTANT: Make specific file searchable NOW. WHEN TO USE: Just wrote important code, created key components, or added crucial docs. Makes it immediately findable for future searches. 🎯 PERFECT FOR: New implementations, important utilities, API endpoints you'll reference later.",
+  name: 'codebase.index_file',
+  description:
+    "⚡ AI ASSISTANT: Make specific file searchable NOW. WHEN TO USE: Just wrote important code, created key components, or added crucial docs. Makes it immediately findable for future searches. 🎯 PERFECT FOR: New implementations, important utilities, API endpoints you'll reference later.",
   inputSchema: {
-    type: "object",
+    type: 'object',
     properties: {
-      project_id: { 
-        type: "string", 
-        description: "Project identifier where the file should be indexed" 
+      file_path: {
+        type: 'string',
+        description:
+          "Relative path to the file within the repository (e.g., 'src/components/Button.tsx', 'README.md')",
       },
-      file_path: { 
-        type: "string", 
-        description: "Relative path to the file within the repository (e.g., 'src/components/Button.tsx', 'README.md')" 
+      branch: {
+        type: 'string',
+        description: "Git branch to index from (default: 'main')",
       },
-      branch: { 
-        type: "string", 
-        description: "Git branch to index from (default: 'main')" 
-      }
     },
-    required: ["project_id", "file_path"]
-  }
+    required: ['file_path'],
+  },
 };
 
 const REINDEX_FILE_TOOL_SCHEMA = {
-  name: "codebase.refresh_file",
-  description: "🔄 AI ASSISTANT: Refresh outdated file in search index. WHEN TO USE: After major edits to important files, when search returns old versions, or after refactoring. Updates the searchable version to match current code. 💡 BETTER than full reindex - targets specific files.",
+  name: 'codebase.refresh_file',
+  description:
+    '🔄 AI ASSISTANT: Refresh outdated file in search index. WHEN TO USE: After major edits to important files, when search returns old versions, or after refactoring. Updates the searchable version to match current code. 💡 BETTER than full reindex - targets specific files.',
   inputSchema: {
-    type: "object",
+    type: 'object',
     properties: {
-      project_id: { 
-        type: "string", 
-        description: "Project identifier where the file should be reindexed" 
+      file_path: {
+        type: 'string',
+        description:
+          "Relative path to the file within the repository (e.g., 'src/components/Button.tsx', 'README.md')",
       },
-      file_path: { 
-        type: "string", 
-        description: "Relative path to the file within the repository (e.g., 'src/components/Button.tsx', 'README.md')" 
+      branch: {
+        type: 'string',
+        description: "Git branch to reindex from (default: 'main')",
       },
-      branch: { 
-        type: "string", 
-        description: "Git branch to reindex from (default: 'main')" 
-      }
     },
-    required: ["project_id", "file_path"]
-  }
+    required: ['file_path'],
+  },
 };
 
 const FULL_REINDEX_TOOL_SCHEMA = {
-  name: "codebase.rebuild_all",
-  description: "🔨 AI ASSISTANT: Rebuild entire project search index from scratch. WHEN TO USE: After major refactoring, when searches consistently return wrong results, or starting fresh. NUCLEAR OPTION - use sparingly. ⚠️ SLOW but thorough - rebuilds complete searchable knowledge base.",
+  name: 'codebase.rebuild_all',
+  description:
+    '🔨 AI ASSISTANT: Rebuild entire project search index from scratch. WHEN TO USE: After major refactoring, when searches consistently return wrong results, or starting fresh. NUCLEAR OPTION - use sparingly. ⚠️ SLOW but thorough - rebuilds complete searchable knowledge base.',
   inputSchema: {
-    type: "object",
+    type: 'object',
     properties: {
-      project_id: { 
-        type: "string", 
-        description: "Project identifier to fully reindex" 
+      branch: {
+        type: 'string',
+        description: "Git branch to reindex from (default: 'main')",
       },
-      branch: { 
-        type: "string", 
-        description: "Git branch to reindex from (default: 'main')" 
-      }
     },
-    required: ["project_id"]
-  }
+    required: [],
+  },
 };
 
 const SCHEDULED_INDEXING_TOOL_SCHEMA = {
-  name: "codebase.sync_changes",
-  description: "🤖 AI ASSISTANT: Smart sync - only indexes NEW changes. WHEN TO USE: Want to ensure search is current, working on active codebase, or periodic maintenance. SUPER EFFICIENT - skips if no changes, only processes modified files. 🎯 PERFECT FOR: Development workflows.",
+  name: 'codebase.sync_changes',
+  description:
+    '🤖 AI ASSISTANT: Smart sync - only indexes NEW changes. WHEN TO USE: Want to ensure search is current, working on active codebase, or periodic maintenance. SUPER EFFICIENT - skips if no changes, only processes modified files. 🎯 PERFECT FOR: Development workflows.',
   inputSchema: {
-    type: "object",
+    type: 'object',
     properties: {
-      project_id: { 
-        type: "string", 
-        description: "Project identifier to check and index" 
+      branch: {
+        type: 'string',
+        description: "Git branch to check for changes (default: 'main')",
       },
-      branch: { 
-        type: "string", 
-        description: "Git branch to check for changes (default: 'main')" 
-      }
     },
-    required: ["project_id"]
-  }
+    required: [],
+  },
 };
 
 const CHECK_CONSTRAINTS_TOOL_SCHEMA = {
-  name: "codebase.check_constraints",
-  description: "🚨 AI ASSISTANT: ALWAYS USE FIRST before coding! Automatically searches for rules and user preferences that must be followed. CRITICAL WORKFLOW: Run this before writing any code to ensure compliance with coding standards, style guides, architecture constraints, and user preferences. Returns all relevant rules and preferences with PROJECT RULES TAKING PRECEDENCE over global rules.",
+  name: 'codebase.check_constraints',
+  description:
+    '🚨 AI ASSISTANT: ALWAYS USE FIRST before coding! Automatically searches for rules and user preferences that must be followed. CRITICAL WORKFLOW: Run this before writing any code to ensure compliance with coding standards, style guides, architecture constraints, and user preferences. Returns all relevant rules and preferences with PROJECT RULES TAKING PRECEDENCE over global rules.',
   inputSchema: {
-    type: "object",
+    type: 'object',
     properties: {
-      project_id: {
-        type: "string",
-        description: "Project identifier to check constraints for. If not provided, searches global constraints only."
-      },
-      scope: {
-        type: "string",
-        enum: ["global", "project", "all"],
-        description: "Constraint scope: 'global' searches only global rules/preferences, 'project' searches only project-specific ones, 'all' searches both (recommended)."
-      },
       coding_task: {
-        type: "string",
-        description: "Brief description of what you're about to code (e.g., 'React component', 'API endpoint', 'database schema'). Helps find relevant constraints."
-      }
+        type: 'string',
+        description:
+          "Brief description of what you're about to code (e.g., 'React component', 'API endpoint', 'database schema'). Helps find relevant constraints.",
+      },
     },
-    required: []
-  }
+    required: [],
+  },
 };
 
 const CLEANUP_PROJECT_TOOL_SCHEMA = {
-  name: "codebase.cleanup_project",
-  description: "🧹 AI ASSISTANT: Emergency cleanup - removes ALL indexed content for a project. WHEN TO USE: When search returns stale results after file deletions, before full reindex, or when project has orphaned vectors. ⚠️ DESTRUCTIVE: This permanently deletes all vectors for the project.",
+  name: 'codebase.cleanup_project',
+  description:
+    '🧹 AI ASSISTANT: Emergency cleanup - removes ALL indexed content for a project. WHEN TO USE: When search returns stale results after file deletions, before full reindex, or when project has orphaned vectors. ⚠️ DESTRUCTIVE: This permanently deletes all vectors for the project.',
   inputSchema: {
-    type: "object",
+    type: 'object',
     properties: {
-      project_id: { 
-        type: "string", 
-        description: "Project identifier to completely clean up" 
-      }
     },
-    required: ["project_id"]
-  }
+    required: [],
+  },
 };
 
 // Code Validation Tools - Prevent common migration and refactoring errors
 const VALIDATE_SYMBOL_TOOL_SCHEMA = {
-  name: "codebase.validate_symbol",
-  description: "🔍 AI ASSISTANT: CRITICAL VALIDATION TOOL - Use BEFORE referencing any variable, function, enum, type, or property. PREVENTS: 'updateIndexingProgress is not defined', 'project already declared', 'IndexStatus.COMPLETED vs indexing', property mismatches. WHEN TO USE: Before every function call, variable declaration, enum comparison, property access, import statement. ESSENTIAL during migrations, type changes, interface updates. ⚠️ MANDATORY: Always validate symbols before using them - saves hours of debugging build errors.",
+  name: 'codebase.validate_symbol',
+  description:
+    "🔍 AI ASSISTANT: CRITICAL VALIDATION TOOL - Use BEFORE referencing any variable, function, enum, type, or property. PREVENTS: 'updateIndexingProgress is not defined', 'project already declared', 'IndexStatus.COMPLETED vs indexing', property mismatches. WHEN TO USE: Before every function call, variable declaration, enum comparison, property access, import statement. ESSENTIAL during migrations, type changes, interface updates. ⚠️ MANDATORY: Always validate symbols before using them - saves hours of debugging build errors.",
   inputSchema: {
-    type: "object",
+    type: 'object',
     properties: {
       symbol_name: {
-        type: "string",
-        description: "The exact symbol name you want to validate (variable, function, enum value, property, etc.). Examples: 'updateIndexingProgress', 'IndexStatus.COMPLETED', 'project.fileCount', 'JobStatus'"
+        type: 'string',
+        description:
+          "The exact symbol name you want to validate (variable, function, enum value, property, etc.). Examples: 'updateIndexingProgress', 'IndexStatus.COMPLETED', 'project.fileCount', 'JobStatus'",
       },
       context: {
-        type: "string",
-        description: "Where you're trying to use this symbol. Examples: 'function call in indexing.ts', 'enum comparison in React component', 'property access on Project type', 'import statement'"
+        type: 'string',
+        description:
+          "Where you're trying to use this symbol. Examples: 'function call in indexing.ts', 'enum comparison in React component', 'property access on Project type', 'import statement'",
       },
       expected_type: {
-        type: "string",
-        description: "Optional: What type/category you expect this symbol to be. Examples: 'function', 'enum value', 'property', 'type', 'variable', 'constant'"
+        type: 'string',
+        description:
+          "Optional: What type/category you expect this symbol to be. Examples: 'function', 'enum value', 'property', 'type', 'variable', 'constant'",
       },
       file_context: {
-        type: "string", 
-        description: "Optional: The file where you're trying to use this symbol. Helps provide more accurate validation."
+        type: 'string',
+        description:
+          "Optional: The file where you're trying to use this symbol. Helps provide more accurate validation.",
       },
-      project_id: {
-        type: "string",
-        description: "Project identifier to search within. If not provided, searches global scope."
-      }
     },
-    required: ["symbol_name", "context"]
-  }
+    required: ['symbol_name', 'context'],
+  },
 };
 
 const CHECK_INTERFACE_CHANGES_TOOL_SCHEMA = {
-  name: "codebase.check_interface_changes",
-  description: "🔄 AI ASSISTANT: MIGRATION SAFETY CHECKER - Use when changing interfaces, types, or function signatures. PREVENTS: breaking changes, missing properties, parameter mismatches. WHEN TO USE: Before modifying any interface, type definition, function signature, or enum. During migrations when updating from old patterns to new ones. ⚠️ ESSENTIAL: Use this before making any breaking changes to understand impact.",
+  name: 'codebase.check_interface_changes',
+  description:
+    '🔄 AI ASSISTANT: MIGRATION SAFETY CHECKER - Use when changing interfaces, types, or function signatures. PREVENTS: breaking changes, missing properties, parameter mismatches. WHEN TO USE: Before modifying any interface, type definition, function signature, or enum. During migrations when updating from old patterns to new ones. ⚠️ ESSENTIAL: Use this before making any breaking changes to understand impact.',
   inputSchema: {
-    type: "object",
+    type: 'object',
     properties: {
       interface_name: {
-        type: "string",
-        description: "Name of the interface, type, or function being changed. Examples: 'Project', 'IndexingJob', 'updateIndexingProgress', 'CreateProjectData'"
+        type: 'string',
+        description:
+          "Name of the interface, type, or function being changed. Examples: 'Project', 'IndexingJob', 'updateIndexingProgress', 'CreateProjectData'",
       },
       proposed_changes: {
-        type: "string",
-        description: "Description of the changes you want to make. Examples: 'add description field', 'change status from string to enum', 'rename parameter from projectId to jobId'"
+        type: 'string',
+        description:
+          "Description of the changes you want to make. Examples: 'add description field', 'change status from string to enum', 'rename parameter from projectId to jobId'",
       },
       change_type: {
-        type: "string",
-        enum: ["add_property", "remove_property", "rename_property", "change_type", "function_signature", "enum_values"],
-        description: "Type of change being made"
+        type: 'string',
+        enum: [
+          'add_property',
+          'remove_property',
+          'rename_property',
+          'change_type',
+          'function_signature',
+          'enum_values',
+        ],
+        description: 'Type of change being made',
       },
-      project_id: {
-        type: "string",
-        description: "Project identifier to check within. If not provided, checks globally."
-      }
     },
-    required: ["interface_name", "proposed_changes", "change_type"]
-  }
+    required: ['interface_name', 'proposed_changes', 'change_type'],
+  },
 };
 
 const FIND_USAGE_PATTERNS_TOOL_SCHEMA = {
-  name: "codebase.find_usage_patterns",
-  description: "📋 AI ASSISTANT: REFACTORING ASSISTANT - Find all usages of a symbol before changing it. PREVENTS: missed references, inconsistent updates, broken calls. WHEN TO USE: Before renaming variables/functions, changing enum values, modifying property names, or updating function signatures. Essential for safe refactoring and migrations. 🎯 PERFECT FOR: Finding all places that need updating when you change something.",
+  name: 'codebase.find_usage_patterns',
+  description:
+    '📋 AI ASSISTANT: REFACTORING ASSISTANT - Find all usages of a symbol before changing it. PREVENTS: missed references, inconsistent updates, broken calls. WHEN TO USE: Before renaming variables/functions, changing enum values, modifying property names, or updating function signatures. Essential for safe refactoring and migrations. 🎯 PERFECT FOR: Finding all places that need updating when you change something.',
   inputSchema: {
-    type: "object",
+    type: 'object',
     properties: {
       symbol_name: {
-        type: "string",
-        description: "Symbol to find usages of. Examples: 'indexStatus', 'updateIndexingProgress', 'JobStatus.RUNNING', 'project.fileCount'"
+        type: 'string',
+        description:
+          "Symbol to find usages of. Examples: 'indexStatus', 'updateIndexingProgress', 'JobStatus.RUNNING', 'project.fileCount'",
       },
       usage_type: {
-        type: "string",
-        enum: ["all", "function_calls", "property_access", "enum_values", "imports", "type_annotations"],
-        description: "Type of usage to find. 'all' finds everything, others are specific usage types."
+        type: 'string',
+        enum: [
+          'all',
+          'function_calls',
+          'property_access',
+          'enum_values',
+          'imports',
+          'type_annotations',
+        ],
+        description:
+          "Type of usage to find. 'all' finds everything, others are specific usage types.",
       },
       include_similar: {
-        type: "boolean",
-        description: "Whether to include similar/related symbols that might also need updating. Useful for finding patterns like 'fileCount' when searching for 'vectorCount'."
+        type: 'boolean',
+        description:
+          "Whether to include similar/related symbols that might also need updating. Useful for finding patterns like 'fileCount' when searching for 'vectorCount'.",
       },
-      project_id: {
-        type: "string",
-        description: "Project identifier to search within. If not provided, searches globally."
-      }
     },
-    required: ["symbol_name"]
-  }
+    required: ['symbol_name'],
+  },
 };
 
 const VALIDATE_ENUM_VALUES_TOOL_SCHEMA = {
-  name: "codebase.validate_enum_values",
-  description: "🎯 AI ASSISTANT: ENUM VALIDATOR - Prevents enum case mismatches and non-existent values. PREVENTS: 'indexing' vs 'INDEXING', 'running' vs 'RUNNING', 'Type CANCELLED is not comparable to IDLE|INDEXING|COMPLETED|ERROR'. WHEN TO USE: Before every enum comparison (status === 'VALUE'), switch cases, enum assignments. CRITICAL when migrating from strings to enums or changing casing. ⚠️ CATCHES: The exact TypeScript enum errors that cause build failures.",
+  name: 'codebase.validate_enum_values',
+  description:
+    "🎯 AI ASSISTANT: ENUM VALIDATOR - Prevents enum case mismatches and non-existent values. PREVENTS: 'indexing' vs 'INDEXING', 'running' vs 'RUNNING', 'Type CANCELLED is not comparable to IDLE|INDEXING|COMPLETED|ERROR'. WHEN TO USE: Before every enum comparison (status === 'VALUE'), switch cases, enum assignments. CRITICAL when migrating from strings to enums or changing casing. ⚠️ CATCHES: The exact TypeScript enum errors that cause build failures.",
   inputSchema: {
-    type: "object",
+    type: 'object',
     properties: {
       enum_name: {
-        type: "string",
-        description: "Name of the enum type. Examples: 'IndexStatus', 'JobStatus', 'TriggerType'"
+        type: 'string',
+        description: "Name of the enum type. Examples: 'IndexStatus', 'JobStatus', 'TriggerType'",
       },
       value_being_used: {
-        type: "string",
-        description: "The enum value you're trying to use. Examples: 'COMPLETED', 'indexing', 'running'"
+        type: 'string',
+        description:
+          "The enum value you're trying to use. Examples: 'COMPLETED', 'indexing', 'running'",
       },
       usage_context: {
-        type: "string",
-        description: "How you're using this enum value. Examples: 'comparison in if statement', 'assignment to variable', 'function parameter', 'switch case'"
+        type: 'string',
+        description:
+          "How you're using this enum value. Examples: 'comparison in if statement', 'assignment to variable', 'function parameter', 'switch case'",
       },
-      project_id: {
-        type: "string",
-        description: "Project identifier to search within. If not provided, searches globally."
-      }
     },
-    required: ["enum_name", "value_being_used", "usage_context"]
-  }
+    required: ['enum_name', 'value_being_used', 'usage_context'],
+  },
 };
 
 const CHECK_FUNCTION_SIGNATURE_TOOL_SCHEMA = {
-  name: "codebase.check_function_signature", 
-  description: "🔧 AI ASSISTANT: FUNCTION SIGNATURE VALIDATOR - Ensures correct parameter names, types, and count. PREVENTS: 'Expected 2 arguments but got 4', 'Property jobId does not exist', 'updateIndexingProgress(projectId) vs updateIndexingProgress(jobId)'. WHEN TO USE: Before every function call during migrations, after changing function parameters, when seeing parameter-related errors. ⚠️ CRITICAL: Validates actual function signature against your intended usage - prevents signature mismatch errors.",
+  name: 'codebase.check_function_signature',
+  description:
+    "🔧 AI ASSISTANT: FUNCTION SIGNATURE VALIDATOR - Ensures correct parameter names, types, and count. PREVENTS: 'Expected 2 arguments but got 4', 'Property jobId does not exist', 'updateIndexingProgress(projectId) vs updateIndexingProgress(jobId)'. WHEN TO USE: Before every function call during migrations, after changing function parameters, when seeing parameter-related errors. ⚠️ CRITICAL: Validates actual function signature against your intended usage - prevents signature mismatch errors.",
   inputSchema: {
-    type: "object",
+    type: 'object',
     properties: {
       function_name: {
-        type: "string",
-        description: "Name of the function to validate. Examples: 'updateIndexingProgress', 'startIndexingJob', 'createProject'"
+        type: 'string',
+        description:
+          "Name of the function to validate. Examples: 'updateIndexingProgress', 'startIndexingJob', 'createProject'",
       },
       parameters_attempting: {
-        type: "array",
+        type: 'array',
         items: {
-          type: "object",
+          type: 'object',
           properties: {
-            name: { type: "string" },
-            type: { type: "string" },
-            value: { type: "string" }
-          }
+            name: { type: 'string' },
+            type: { type: 'string' },
+            value: { type: 'string' },
+          },
         },
-        description: "Array of parameters you're trying to pass. Each should have name, type, and example value."
+        description:
+          "Array of parameters you're trying to pass. Each should have name, type, and example value.",
       },
       call_context: {
-        type: "string",
-        description: "Where you're calling this function. Examples: 'in indexing.ts line 150', 'API route handler', 'React component effect'"
+        type: 'string',
+        description:
+          "Where you're calling this function. Examples: 'in indexing.ts line 150', 'API route handler', 'React component effect'",
       },
-      project_id: {
-        type: "string",
-        description: "Project identifier to search within. If not provided, searches globally."
-      }
     },
-    required: ["function_name", "parameters_attempting", "call_context"]
-  }
+    required: ['function_name', 'parameters_attempting', 'call_context'],
+  },
 };
 
 // Documentation Tools
 const DOCS_LIST_REPOSITORIES_TOOL_SCHEMA = {
-  name: "docs.list_repositories",
-  description: "📚 AI ASSISTANT: List all documentation repositories available for indexing. WHEN TO USE: To see what documentation sources are available, check repository status, or before adding/indexing repositories. Returns repository metadata including indexing status and document counts.",
+  name: 'docs.list_repositories',
+  description:
+    '📚 AI ASSISTANT: List all documentation repositories available for indexing. WHEN TO USE: To see what documentation sources are available, check repository status, or before adding/indexing repositories. Returns repository metadata including indexing status and document counts.',
   inputSchema: {
-    type: "object",
+    type: 'object',
     properties: {},
-    required: []
-  }
+    required: [],
+  },
 };
 
 const DOCS_ADD_REPOSITORY_TOOL_SCHEMA = {
-  name: "docs.add_repository", 
-  description: "📝 AI ASSISTANT: Add a new documentation source for indexing. WHEN TO USE: When you want to add comprehensive documentation that MCP clients can search. Supports 3 types: 1) Git repositories (GitHub, GitLab, etc.), 2) llms.txt files (AI-optimized documentation), 3) Websites (documentation sites). Just provide any URL - the system automatically detects the type and extracts relevant information.",
+  name: 'docs.add_repository',
+  description:
+    '📝 AI ASSISTANT: Add a new documentation source for indexing. WHEN TO USE: When you want to add comprehensive documentation that MCP clients can search. Supports 3 types: 1) Git repositories (GitHub, GitLab, etc.), 2) llms.txt files (AI-optimized documentation), 3) Websites (documentation sites). Just provide any URL - the system automatically detects the type and extracts relevant information.',
   inputSchema: {
-    type: "object",
+    type: 'object',
     properties: {
-      url: { 
-        type: "string", 
-        description: "Any documentation URL. Examples: Git repos ('https://github.com/facebook/react'), llms.txt files ('https://example.com/llms.txt'), or documentation websites ('https://docs.example.com'). The system auto-detects the source type and extracts name, description, languages, and content structure." 
-      }
+      url: {
+        type: 'string',
+        description:
+          "Any documentation URL. Examples: Git repos ('https://github.com/facebook/react'), llms.txt files ('https://example.com/llms.txt'), or documentation websites ('https://docs.example.com'). The system auto-detects the source type and extracts name, description, languages, and content structure.",
+      },
     },
-    required: ["url"]
-  }
+    required: ['url'],
+  },
 };
 
 const DOCS_INDEX_REPOSITORY_TOOL_SCHEMA = {
-  name: "docs.index_repository",
-  description: "🚀 AI ASSISTANT: Start indexing a documentation repository. WHEN TO USE: After adding a repository or to re-index updated documentation. This clones the repository and extracts README files, documentation folders, API guides, and code examples for semantic search.",
+  name: 'docs.index_repository',
+  description:
+    '🚀 AI ASSISTANT: Start indexing a documentation repository. WHEN TO USE: After adding a repository or to re-index updated documentation. This clones the repository and extracts README files, documentation folders, API guides, and code examples for semantic search.',
   inputSchema: {
-    type: "object", 
+    type: 'object',
     properties: {
-      repository_id: { 
-        type: "string", 
-        description: "ID of the repository to index (from docs.list_repositories)" 
-      }
+      repository_id: {
+        type: 'string',
+        description: 'ID of the repository to index (from docs.list_repositories)',
+      },
     },
-    required: ["repository_id"]
-  }
+    required: ['repository_id'],
+  },
 };
 
 const DOCS_SEARCH_TOOL_SCHEMA = {
-  name: "docs.search",
-  description: "🔍 AI ASSISTANT: Search indexed documentation repositories for specific information. WHEN TO USE: To find API documentation, usage examples, best practices, or technical guides from indexed repositories. Returns relevant documentation snippets with source information.",
+  name: 'docs.search',
+  description:
+    '🔍 AI ASSISTANT: Search indexed documentation repositories for specific information. WHEN TO USE: To find API documentation, usage examples, best practices, or technical guides from indexed repositories. Returns relevant documentation snippets with source information.',
   inputSchema: {
-    type: "object",
+    type: 'object',
     properties: {
-      query: { 
-        type: "string", 
-        description: "Natural language search query. Examples: 'React useState hook examples', 'TypeScript interface syntax', 'Next.js routing configuration', 'Python async/await patterns'" 
+      query: {
+        type: 'string',
+        description:
+          "Natural language search query. Examples: 'React useState hook examples', 'TypeScript interface syntax', 'Next.js routing configuration', 'Python async/await patterns'",
       },
-      repository_filter: { 
-        type: "string", 
-        description: "Optional: Filter results to specific repository name. Use exact repository name from docs.list_repositories." 
+      repository_filter: {
+        type: 'string',
+        description:
+          'Optional: Filter results to specific repository name. Use exact repository name from docs.list_repositories.',
       },
-      language_filter: { 
-        type: "string", 
-        description: "Optional: Filter by programming language. Examples: 'javascript', 'typescript', 'python', 'go'" 
+      language_filter: {
+        type: 'string',
+        description:
+          "Optional: Filter by programming language. Examples: 'javascript', 'typescript', 'python', 'go'",
       },
-      limit: { 
-        type: "number", 
-        description: "Maximum number of results to return (default: 5, max: 10)" 
-      }
+      limit: {
+        type: 'number',
+        description: 'Maximum number of results to return (default: 5, max: 10)',
+      },
     },
-    required: ["query"]
-  }
+    required: ['query'],
+  },
+};
+
+const HYBRID_SEARCH_TOOL_SCHEMA = {
+  name: 'docs.hybrid_search',
+  description:
+    '🔍 AI ASSISTANT: Advanced hybrid search combining semantic and keyword matching for documentation. WHEN TO USE: For complex queries requiring both conceptual and exact matches. Includes auto-completion, spelling correction, and faceted filtering.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      query: {
+        type: 'string',
+        description: 'Natural language search query',
+      },
+      search_type: {
+        type: 'string',
+        enum: ['semantic', 'keyword', 'hybrid'],
+        description:
+          "Search method: 'semantic' for conceptual, 'keyword' for exact matches, 'hybrid' for combined (default)",
+      },
+      filters: {
+        type: 'object',
+        properties: {
+          content_types: {
+            type: 'array',
+            items: { type: 'string' },
+            description:
+              "Filter by content type: 'api', 'tutorial', 'example', 'changelog', 'guide'",
+          },
+          complexity: {
+            type: 'array',
+            items: { type: 'string' },
+            description: "Filter by complexity: 'beginner', 'intermediate', 'advanced'",
+          },
+          languages: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Filter by programming language',
+          },
+          freshness: {
+            type: 'object',
+            properties: {
+              min: { type: 'number', description: 'Minimum freshness score (0.0-1.0)' },
+              max: { type: 'number', description: 'Maximum freshness score (0.0-1.0)' },
+            },
+          },
+        },
+      },
+      limit: {
+        type: 'number',
+        description: 'Maximum results (default: 10, max: 50)',
+      },
+    },
+    required: ['query'],
+  },
+};
+
+const SEARCH_SUGGESTIONS_TOOL_SCHEMA = {
+  name: 'docs.search_suggestions',
+  description:
+    '💡 AI ASSISTANT: Get search suggestions, auto-completions, and query enhancements. WHEN TO USE: To help users discover searchable content and improve their queries.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      partial_query: {
+        type: 'string',
+        description: 'Partial search query for auto-completion',
+      },
+      suggestion_type: {
+        type: 'string',
+        enum: ['completion', 'correction', 'expansion', 'related'],
+        description: 'Type of suggestions to return',
+      },
+      limit: {
+        type: 'number',
+        description: 'Maximum suggestions to return (default: 5)',
+      },
+    },
+    required: ['partial_query'],
+  },
+};
+
+const RELATIONSHIP_GRAPH_TOOL_SCHEMA = {
+  name: 'docs.relationship_graph',
+  description:
+    '🕸️ AI ASSISTANT: Build interactive documentation relationship network. WHEN TO USE: To visualize connections between documents, find knowledge clusters, and understand content relationships. Creates graph of document similarities, references, imports, and conceptual links.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      options: {
+        type: 'object',
+        properties: {
+          includeWeakRelationships: {
+            type: 'boolean',
+            description: 'Include relationships with low strength scores (default: false)',
+          },
+          minStrength: {
+            type: 'number',
+            description: 'Minimum relationship strength threshold (0.0-1.0, default: 0.3)',
+          },
+          maxNodes: {
+            type: 'number',
+            description: 'Maximum number of documents to include in graph (default: 200)',
+          },
+        },
+      },
+    },
+    required: [],
+  },
+};
+
+const RELATED_DOCUMENTS_TOOL_SCHEMA = {
+  name: 'docs.find_related',
+  description:
+    '🔗 AI ASSISTANT: Find documents related to a specific document. WHEN TO USE: To discover connected content, build reading paths, and explore document relationships. Returns documents with similarity scores and relationship types.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      document_id: {
+        type: 'string',
+        description: 'ID of the document to find related documents for',
+      },
+      limit: {
+        type: 'number',
+        description: 'Maximum number of related documents to return (default: 10)',
+      },
+      min_strength: {
+        type: 'number',
+        description: 'Minimum relationship strength threshold (0.0-1.0, default: 0.3)',
+      },
+    },
+    required: ['document_id'],
+  },
+};
+
+const FACETED_SEARCH_TOOL_SCHEMA = {
+  name: 'docs.faceted_search',
+  description:
+    '🎛️ AI ASSISTANT: Advanced faceted search with dynamic filters and smart suggestions. WHEN TO USE: For complex searches requiring precise filtering by content type, language, complexity, and other facets. Returns search results with available filters and intelligent suggestions.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      query: {
+        type: 'string',
+        description: 'Natural language search query',
+      },
+      filters: {
+        type: 'object',
+        description: 'Faceted filters to apply',
+        properties: {
+          contentTypes: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Filter by content types: api, tutorial, guide, example, etc.',
+          },
+          languages: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Filter by programming languages',
+          },
+          complexity: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Filter by complexity: beginner, intermediate, advanced',
+          },
+          sourceTypes: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Filter by source types: git, llmstxt, website',
+          },
+          freshnessRange: {
+            type: 'object',
+            properties: {
+              min: { type: 'number' },
+              max: { type: 'number' },
+            },
+            description: 'Filter by content freshness (0.0-1.0)',
+          },
+          popularityRange: {
+            type: 'object',
+            properties: {
+              min: { type: 'number' },
+              max: { type: 'number' },
+            },
+            description: 'Filter by popularity score',
+          },
+          hasExamples: {
+            type: 'boolean',
+            description: 'Filter by whether content contains code examples',
+          },
+        },
+      },
+    },
+    required: ['query'],
+  },
 };
 
 const ALL_TOOLS = [
@@ -456,7 +642,6 @@ const ALL_TOOLS = [
   INGEST_TOOL_SCHEMA,
   RETRIEVE_TOOL_SCHEMA,
   DELETE_SOURCE_TOOL_SCHEMA,
-  LIST_PROJECTS_TOOL_SCHEMA,
   INDEX_FILE_TOOL_SCHEMA,
   REINDEX_FILE_TOOL_SCHEMA,
   FULL_REINDEX_TOOL_SCHEMA,
@@ -472,7 +657,14 @@ const ALL_TOOLS = [
   DOCS_LIST_REPOSITORIES_TOOL_SCHEMA,
   DOCS_ADD_REPOSITORY_TOOL_SCHEMA,
   DOCS_INDEX_REPOSITORY_TOOL_SCHEMA,
-  DOCS_SEARCH_TOOL_SCHEMA
+  DOCS_SEARCH_TOOL_SCHEMA,
+  HYBRID_SEARCH_TOOL_SCHEMA,
+  SEARCH_SUGGESTIONS_TOOL_SCHEMA,
+  // Relationship Analysis Tools
+  RELATIONSHIP_GRAPH_TOOL_SCHEMA,
+  RELATED_DOCUMENTS_TOOL_SCHEMA,
+  // Advanced Search Tools
+  FACETED_SEARCH_TOOL_SCHEMA,
 ];
 
 export async function POST(request: Request) {
@@ -480,44 +672,55 @@ export async function POST(request: Request) {
     const body = await request.json();
     console.log('Incoming MCP request:', body);
     const { method, params, id, jsonrpc } = body;
-    
-    // Extract project authentication info
+
+    // Validate Bearer token authentication
     const authHeader = request.headers.get('Authorization');
-    const projectIdHeader = request.headers.get('X-Project-ID');
-    let projectId: string | null = null;
-    let project: any = null;
+    const projectAuth = await validateBearerToken(authHeader);
     
-    if (authHeader?.startsWith('Bearer ')) {
-      const token = authHeader.substring(7);
-      project = await getProjectByToken(token);
-      if (project) {
-        projectId = project.id;
+    const projectId = projectAuth?.projectId || null;
+    const project = projectAuth ? {
+      id: projectAuth.projectId,
+      name: projectAuth.projectName,
+      gitRepo: projectAuth.gitRepo,
+    } : null;
+
+    // Helper function to check project authentication (now simplified)
+    const requireProjectAuth = () => {
+      if (!projectId || !project) {
+        throw new Error('Authentication required: Valid project token must be provided via Authorization header');
       }
-    }
+      return { projectId, project };
+    };
 
     // Validate JSON-RPC 2.0 format
     if (jsonrpc !== '2.0') {
-      return NextResponse.json({
-        jsonrpc: '2.0',
-        error: {
-          code: -32600,
-          message: 'Invalid Request',
-          data: 'Missing or invalid jsonrpc version'
+      return NextResponse.json(
+        {
+          jsonrpc: '2.0',
+          error: {
+            code: -32600,
+            message: 'Invalid Request',
+            data: 'Missing or invalid jsonrpc version',
+          },
+          id: id || null,
         },
-        id: id || null
-      }, { status: 400 });
+        { status: 400 }
+      );
     }
 
     if (!method) {
-      return NextResponse.json({
-        jsonrpc: '2.0',
-        error: {
-          code: -32600,
-          message: 'Invalid Request',
-          data: 'Missing method'
+      return NextResponse.json(
+        {
+          jsonrpc: '2.0',
+          error: {
+            code: -32600,
+            message: 'Invalid Request',
+            data: 'Missing method',
+          },
+          id: id || null,
         },
-        id: id || null
-      }, { status: 400 });
+        { status: 400 }
+      );
     }
 
     switch (method) {
@@ -529,15 +732,15 @@ export async function POST(request: Request) {
             protocolVersion: params?.protocolVersion || '2024-11-05',
             capabilities: {
               tools: {
-                listChanged: false
-              }
+                listChanged: false,
+              },
             },
             serverInfo: {
               name: 'ideamem-mcp',
-              version: '1.0.0'
-            }
+              version: '1.0.0',
+            },
           },
-          id: body.id
+          id: body.id,
         });
 
       case 'notifications/initialized':
@@ -550,9 +753,9 @@ export async function POST(request: Request) {
         return NextResponse.json({
           jsonrpc: '2.0',
           result: {
-            tools: ALL_TOOLS
+            tools: ALL_TOOLS,
           },
-          id: body.id
+          id: body.id,
         });
 
       case 'shutdown':
@@ -569,119 +772,117 @@ export async function POST(request: Request) {
 
       case 'tools/call':
         if (!params || !params.name) {
-          return NextResponse.json({
-            jsonrpc: '2.0',
-            error: {
-              code: -32602,
-              message: 'Invalid params',
-              data: 'Missing tool name'
+          return NextResponse.json(
+            {
+              jsonrpc: '2.0',
+              error: {
+                code: -32602,
+                message: 'Invalid params',
+                data: 'Missing tool name',
+              },
+              id: body.id,
             },
-            id: body.id
-          }, { status: 400 });
+            { status: 400 }
+          );
         }
 
         const { name, arguments: toolArgs } = params;
-        
+
         try {
           let result;
           switch (name) {
             case 'codebase.store':
               if (!toolArgs) throw new Error('Missing arguments for codebase.store');
-              result = await ingest(toolArgs);
+              const { projectId: storeProjectId } = requireProjectAuth();
+              result = await ingest({ ...toolArgs, project_id: storeProjectId });
               break;
             case 'codebase.search':
               if (!toolArgs) throw new Error('Missing arguments for codebase.search');
-              result = await retrieve(toolArgs);
+              const { projectId: searchProjectId } = requireProjectAuth();
+              result = await retrieve({ ...toolArgs, project_id: searchProjectId });
               // Track query for metrics
-              if (projectId) {
-                trackQuery(projectId).catch(err => 
-                  console.warn('Failed to track query:', err)
-                );
-              }
+              trackQuery(searchProjectId).catch((err) => console.warn('Failed to track query:', err));
               break;
             case 'codebase.forget':
               if (!toolArgs) throw new Error('Missing arguments for codebase.forget');
-              result = await deleteSource(toolArgs);
-              break;
-            case 'codebase.list_projects':
-              result = await listProjects();
+              const { projectId: forgetProjectId } = requireProjectAuth();
+              result = await deleteSource({ ...toolArgs, project_id: forgetProjectId });
               break;
             case 'codebase.index_file':
               if (!toolArgs) throw new Error('Missing arguments for codebase.index_file');
-              if (!projectId || !project) throw new Error('Project authentication required for indexing operations');
+              const { projectId: authProjectId, project: authProject } = requireProjectAuth();
               result = await indexSingleFile(
-                projectId,
-                project.gitRepo,
+                authProjectId,
+                authProject.gitRepo,
                 toolArgs.file_path,
                 toolArgs.branch || 'main'
               );
               break;
             case 'codebase.refresh_file':
               if (!toolArgs) throw new Error('Missing arguments for codebase.refresh_file');
-              if (!projectId || !project) throw new Error('Project authentication required for indexing operations');
+              const { projectId: refreshProjectId, project: refreshProject } = requireProjectAuth();
               result = await reindexSingleFile(
-                projectId,
-                project.gitRepo,
+                refreshProjectId,
+                refreshProject.gitRepo,
                 toolArgs.file_path,
                 toolArgs.branch || 'main'
               );
               break;
             case 'codebase.rebuild_all':
               if (!toolArgs) throw new Error('Missing arguments for codebase.rebuild_all');
-              if (!projectId || !project) throw new Error('Project authentication required for indexing operations');
-              result = await fullReindex(
-                projectId,
-                project.gitRepo,
-                toolArgs.branch || 'main'
-              );
+              const { projectId: rebuildProjectId, project: rebuildProject } = requireProjectAuth();
+              result = await fullReindex(rebuildProjectId, rebuildProject.gitRepo, toolArgs.branch || 'main');
               break;
             case 'codebase.sync_changes':
               if (!toolArgs) throw new Error('Missing arguments for codebase.sync_changes');
-              if (!projectId || !project) throw new Error('Project authentication required for indexing operations');
+              const { projectId: syncProjectId, project: syncProject } = requireProjectAuth();
               result = await scheduledIncrementalIndexing(
-                projectId,
-                project.gitRepo,
+                syncProjectId,
+                syncProject.gitRepo,
                 toolArgs.branch || 'main'
               );
               break;
             case 'codebase.check_constraints':
               // Smart constraint checking with PROJECT PRIORITY - project rules override global ones
-              const constraintQuery = toolArgs?.coding_task 
+              const constraintQuery = toolArgs?.coding_task
                 ? `${toolArgs.coding_task} coding standards rules preferences constraints`
                 : 'coding standards style guide architecture constraints user preferences';
+
+              const { projectId: constraintProjectId } = requireProjectAuth();
               
-              // Get project rules/preferences first (highest priority)
-              const projectRules = toolArgs?.project_id ? await retrieve({
+              // Get project-specific rules/preferences first
+              const projectRules = await retrieve({
                 query: constraintQuery,
-                project_id: toolArgs.project_id,
-                scope: 'project',
-                filters: { type: 'rule' }
-              }) : [];
-              
-              const projectPreferences = toolArgs?.project_id ? await retrieve({
+                project_id: constraintProjectId,
+                filters: { type: 'rule' },
+              });
+              const projectPreferences = await retrieve({
                 query: constraintQuery,
-                project_id: toolArgs.project_id,
-                scope: 'project',
-                filters: { type: 'user_preference' }
-              }) : [];
-              
-              // Get global rules/preferences (lower priority)
-              const globalRules = (toolArgs?.scope === 'all' || toolArgs?.scope === 'global') ? await retrieve({
-                query: constraintQuery,
-                scope: 'global',
-                filters: { type: 'rule' }
-              }) : [];
-              
-              const globalPreferences = (toolArgs?.scope === 'all' || toolArgs?.scope === 'global') ? await retrieve({
-                query: constraintQuery,
-                scope: 'global',
-                filters: { type: 'user_preference' }
-              }) : [];
-              
+                project_id: constraintProjectId,
+                filters: { type: 'user_preference' },
+              });
+
+              // Get global rules/preferences as fallback (only if no project rules exist)
+              const globalRules = projectRules.length === 0 
+                ? await retrieve({
+                    query: constraintQuery,
+                    project_id: 'global',
+                    filters: { type: 'rule' },
+                  })
+                : [];
+
+              const globalPreferences = projectPreferences.length === 0
+                ? await retrieve({
+                    query: constraintQuery,
+                    project_id: 'global',
+                    filters: { type: 'user_preference' },
+                  })
+                : [];
+
               // Merge with project taking precedence (project rules come first)
               const allRules = [...projectRules, ...globalRules];
               const allPreferences = [...projectPreferences, ...globalPreferences];
-              
+
               result = {
                 rules: allRules,
                 preferences: allPreferences,
@@ -689,80 +890,88 @@ export async function POST(request: Request) {
                   project_rules_count: projectRules.length,
                   global_rules_count: globalRules.length,
                   project_preferences_count: projectPreferences.length,
-                  global_preferences_count: globalPreferences.length
+                  global_preferences_count: globalPreferences.length,
                 },
                 summary: `Found ${allRules.length} rules (${projectRules.length} project-specific, ${globalRules.length} global) and ${allPreferences.length} preferences (${projectPreferences.length} project-specific, ${globalPreferences.length} global). PROJECT RULES OVERRIDE GLOBAL RULES.`,
-                workflow_reminder: "🚨 CRITICAL: Project-specific constraints take precedence over global ones. Review project rules first, then global rules as fallback."
+                workflow_reminder:
+                  '🚨 CRITICAL: Project-specific constraints take precedence over global ones. Review project rules first, then global rules as fallback.',
               };
               break;
             case 'codebase.cleanup_project':
               if (!toolArgs) throw new Error('Missing arguments for codebase.cleanup_project');
-              if (!projectId || !project) throw new Error('Project authentication required for cleanup operations');
-              
-              console.log(`Emergency cleanup requested for project ${projectId}`);
-              const cleanupResult = await deleteAllProjectVectors(projectId);
-              
+              const { projectId: cleanupProjectId, project: cleanupProject } = requireProjectAuth();
+
+              console.log(`Emergency cleanup requested for project ${cleanupProjectId}`);
+              const cleanupResult = await deleteAllProjectVectors(cleanupProjectId);
+
               result = {
                 success: cleanupResult.success,
                 deleted_count: cleanupResult.deleted_count,
-                project_id: projectId,
-                message: `Successfully cleaned up all vectors for project ${projectId}. This project's search index has been completely reset.`,
-                warning: "All indexed content for this project has been permanently removed. You may want to run a full reindex to restore the search functionality."
+                project_id: cleanupProjectId,
+                message: `Successfully cleaned up all vectors for project ${cleanupProjectId}. This project's search index has been completely reset.`,
+                warning:
+                  'All indexed content for this project has been permanently removed. You may want to run a full reindex to restore the search functionality.',
               };
               break;
 
             // Code Validation Tools
             case 'codebase.validate_symbol':
               if (!toolArgs) throw new Error('Missing arguments for codebase.validate_symbol');
+              const { projectId: symbolProjectId } = requireProjectAuth();
               const symbolQuery = `symbol definition ${toolArgs.symbol_name} ${toolArgs.expected_type || ''} ${toolArgs.context}`;
               const symbolResults = await retrieve({
                 query: symbolQuery,
-                project_id: toolArgs.project_id || projectId,
-                scope: toolArgs.project_id ? 'all' : 'global'
+                project_id: symbolProjectId,
               });
-              
+
               result = {
                 symbol_name: toolArgs.symbol_name,
                 found: (symbolResults || []).length > 0,
                 matches: (symbolResults || []).map((r: any) => ({
-                  source: r.metadata.source,
-                  type: r.metadata.type,
-                  snippet: r.content.substring(0, 200),
-                  similarity: r.similarity
+                  source: r.payload.source,
+                  type: r.payload.type,
+                  snippet: r.payload.content.substring(0, 200),
+                  similarity: r.score,
                 })),
                 validation_status: (symbolResults || []).length > 0 ? 'VALID' : 'NOT_FOUND',
-                suggestions: (symbolResults || []).length === 0 ? 'Symbol not found. Check spelling, imports, or search for similar symbols.' : 'Symbol found and validated.'
+                suggestions:
+                  (symbolResults || []).length === 0
+                    ? 'Symbol not found. Check spelling, imports, or search for similar symbols.'
+                    : 'Symbol found and validated.',
               };
               break;
 
             case 'codebase.check_interface_changes':
-              if (!toolArgs) throw new Error('Missing arguments for codebase.check_interface_changes');
+              if (!toolArgs)
+                throw new Error('Missing arguments for codebase.check_interface_changes');
+              const { projectId: interfaceProjectId } = requireProjectAuth();
               const interfaceQuery = `interface type ${toolArgs.interface_name} definition properties fields`;
               const interfaceResults = await retrieve({
                 query: interfaceQuery,
-                project_id: toolArgs.project_id || projectId,
-                scope: toolArgs.project_id ? 'all' : 'global'
+                project_id: interfaceProjectId,
               });
-              
+
               result = {
                 interface_name: toolArgs.interface_name,
                 current_definition_found: (interfaceResults || []).length > 0,
                 proposed_changes: toolArgs.proposed_changes,
                 change_type: toolArgs.change_type,
                 current_definitions: (interfaceResults || []).map((r: any) => ({
-                  source: r.metadata.source,
-                  content: r.content,
-                  similarity: r.similarity
+                  source: r.payload.source,
+                  content: r.payload.content,
+                  similarity: r.score,
                 })),
-                impact_warning: "Review all usages of this interface before making changes. Breaking changes may require updating multiple files.",
-                next_step: "Use codebase.find_usage_patterns to find all places that use this interface."
+                impact_warning:
+                  'Review all usages of this interface before making changes. Breaking changes may require updating multiple files.',
+                next_step:
+                  'Use codebase.find_usage_patterns to find all places that use this interface.',
               };
               break;
 
             case 'codebase.find_usage_patterns':
               if (!toolArgs) throw new Error('Missing arguments for codebase.find_usage_patterns');
               let usageQuery = toolArgs.symbol_name;
-              
+
               // Enhance query based on usage type
               switch (toolArgs.usage_type) {
                 case 'function_calls':
@@ -781,38 +990,39 @@ export async function POST(request: Request) {
                   usageQuery += ' type annotation interface';
                   break;
               }
-              
+
+              const { projectId: usageProjectId } = requireProjectAuth();
               const usageResults = await retrieve({
                 query: usageQuery,
-                project_id: toolArgs.project_id || projectId,
-                scope: toolArgs.project_id ? 'all' : 'global'
+                project_id: usageProjectId,
               });
-              
+
               result = {
                 symbol_name: toolArgs.symbol_name,
                 usage_type: toolArgs.usage_type || 'all',
                 total_usages_found: (usageResults || []).length,
                 usages: (usageResults || []).map((r: any) => ({
-                  file: r.metadata.source,
-                  content: r.content,
-                  type: r.metadata.type,
-                  similarity: r.similarity
+                  file: r.payload.source,
+                  content: r.payload.content,
+                  type: r.payload.type,
+                  similarity: r.score,
                 })),
-                refactoring_checklist: (usageResults || []).length > 0 ? 
-                  `Found ${(usageResults || []).length} usages. Update all these locations when changing ${toolArgs.symbol_name}.` :
-                  'No usages found. Symbol might be safe to change or not indexed yet.'
+                refactoring_checklist:
+                  (usageResults || []).length > 0
+                    ? `Found ${(usageResults || []).length} usages. Update all these locations when changing ${toolArgs.symbol_name}.`
+                    : 'No usages found. Symbol might be safe to change or not indexed yet.',
               };
               break;
 
             case 'codebase.validate_enum_values':
               if (!toolArgs) throw new Error('Missing arguments for codebase.validate_enum_values');
+              const { projectId: enumProjectId } = requireProjectAuth();
               const enumQuery = `enum ${toolArgs.enum_name} values ${toolArgs.value_being_used}`;
               const enumResults = await retrieve({
                 query: enumQuery,
-                project_id: toolArgs.project_id || projectId,
-                scope: toolArgs.project_id ? 'all' : 'global'
+                project_id: enumProjectId,
               });
-              
+
               result = {
                 enum_name: toolArgs.enum_name,
                 value_being_used: toolArgs.value_being_used,
@@ -820,43 +1030,48 @@ export async function POST(request: Request) {
                 enum_found: (enumResults || []).length > 0,
                 valid_values: (enumResults || []).map((r: any) => {
                   // Extract enum values from the content
-                  const content = r.content;
+                  const content = r.payload.content;
                   const enumMatches = content.match(/enum\s+\w+\s*{([^}]*)}/g);
                   return {
-                    source: r.metadata.source,
+                    source: r.payload.source,
                     content: content,
-                    similarity: r.similarity
+                    similarity: r.score,
                   };
                 }),
-                validation_result: (enumResults || []).some(r => r.content.includes(toolArgs.value_being_used)) ? 
-                  'VALID' : 'INVALID',
-                suggestions: 'Check the actual enum definition for correct values and casing.'
+                validation_result: (enumResults || []).some((r) =>
+                  r.payload.content.includes(toolArgs.value_being_used)
+                )
+                  ? 'VALID'
+                  : 'INVALID',
+                suggestions: 'Check the actual enum definition for correct values and casing.',
               };
               break;
 
             case 'codebase.check_function_signature':
-              if (!toolArgs) throw new Error('Missing arguments for codebase.check_function_signature');
+              if (!toolArgs)
+                throw new Error('Missing arguments for codebase.check_function_signature');
+              const { projectId: funcProjectId } = requireProjectAuth();
               const funcQuery = `function ${toolArgs.function_name} parameters signature definition`;
               const funcResults = await retrieve({
                 query: funcQuery,
-                project_id: toolArgs.project_id || projectId,
-                scope: toolArgs.project_id ? 'all' : 'global'
+                project_id: funcProjectId,
               });
-              
+
               result = {
                 function_name: toolArgs.function_name,
                 parameters_attempting: toolArgs.parameters_attempting,
                 call_context: toolArgs.call_context,
                 function_found: (funcResults || []).length > 0,
                 function_definitions: (funcResults || []).map((r: any) => ({
-                  source: r.metadata.source,
-                  signature: r.content,
-                  similarity: r.similarity
+                  source: r.payload.source,
+                  signature: r.payload.content,
+                  similarity: r.score,
                 })),
                 validation_status: (funcResults || []).length > 0 ? 'FOUND' : 'NOT_FOUND',
-                recommendations: (funcResults || []).length > 0 ? 
-                  'Compare your parameters with the actual function signature above.' :
-                  'Function not found. Check function name spelling or imports.'
+                recommendations:
+                  (funcResults || []).length > 0
+                    ? 'Compare your parameters with the actual function signature above.'
+                    : 'Function not found. Check function name spelling or imports.',
               };
               break;
 
@@ -864,7 +1079,9 @@ export async function POST(request: Request) {
             case 'docs.list_repositories':
               const repos = await (async () => {
                 try {
-                  const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/api/global/docs/repositories`);
+                  const response = await fetch(
+                    `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/api/global/docs/repositories`
+                  );
                   const data = await response.json();
                   return data.repositories || [];
                 } catch (error) {
@@ -879,16 +1096,22 @@ export async function POST(request: Request) {
               if (!toolArgs) throw new Error('Missing arguments for docs.add_repository');
               const addResponse = await (async () => {
                 try {
-                  const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/api/global/docs/repositories`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      url: toolArgs.url
-                    })
-                  });
+                  const response = await fetch(
+                    `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/api/global/docs/repositories`,
+                    {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        url: toolArgs.url,
+                      }),
+                    }
+                  );
                   return await response.json();
                 } catch (error) {
-                  return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+                  return {
+                    success: false,
+                    error: error instanceof Error ? error.message : 'Unknown error',
+                  };
                 }
               })();
               result = addResponse;
@@ -898,14 +1121,20 @@ export async function POST(request: Request) {
               if (!toolArgs) throw new Error('Missing arguments for docs.index_repository');
               const indexResponse = await (async () => {
                 try {
-                  const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/api/global/docs/index`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ repositoryId: toolArgs.repository_id })
-                  });
+                  const response = await fetch(
+                    `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/api/global/docs/index`,
+                    {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ repositoryId: toolArgs.repository_id }),
+                    }
+                  );
                   return await response.json();
                 } catch (error) {
-                  return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+                  return {
+                    success: false,
+                    error: error instanceof Error ? error.message : 'Unknown error',
+                  };
                 }
               })();
               result = indexResponse;
@@ -913,89 +1142,299 @@ export async function POST(request: Request) {
 
             case 'docs.search':
               if (!toolArgs) throw new Error('Missing arguments for docs.search');
-              const searchResults = await retrieve({
-                query: toolArgs.query,
-                project_id: 'global',
-                scope: 'global',
-                filters: {
-                  type: 'documentation',
-                  ...(toolArgs.language_filter && { language: toolArgs.language_filter }),
-                  ...(toolArgs.repository_filter && { source: toolArgs.repository_filter })
+
+              // Generate cache key for search
+              const searchFilters = {
+                type: 'documentation',
+                ...(toolArgs.language_filter && { language: toolArgs.language_filter }),
+                ...(toolArgs.repository_filter && { source: toolArgs.repository_filter }),
+              };
+              const searchHash = SearchResultsCache.generateQueryHash(
+                toolArgs.query,
+                searchFilters
+              );
+
+              // Check cache first
+              const cachedResults = await SearchResultsCache.get(searchHash);
+              let searchResults;
+              let searchTime = 0;
+
+              if (cachedResults) {
+                console.log(`Using cached search results for: ${toolArgs.query}`);
+                console.log('Cached results structure:', JSON.stringify(cachedResults, null, 2));
+                searchResults = cachedResults.results;
+                searchTime = cachedResults.metadata.searchTime;
+              } else {
+                // Perform fresh search
+                const startTime = Date.now();
+                searchResults = await retrieve({
+                  query: toolArgs.query,
+                  project_id: 'global',
+                  filters: searchFilters,
+                });
+                searchTime = Date.now() - startTime;
+
+                // Debug logging for search results structure
+                if (searchResults && searchResults.length > 0) {
+                  console.log(
+                    'Sample search result structure:',
+                    JSON.stringify(searchResults[0], null, 2)
+                  );
+                } else {
+                  console.log('No search results found for query:', toolArgs.query);
                 }
-              });
-              
+
+                // Cache the results
+                await SearchResultsCache.set(
+                  searchHash,
+                  searchResults || [],
+                  {
+                    totalResults: (searchResults || []).length,
+                    searchTime,
+                  },
+                  60 * 60 // 1 hour TTL
+                );
+              }
+
               const limitedResults = (searchResults || []).slice(0, toolArgs.limit || 5);
+              const mappedResults = limitedResults.map((r: any) => ({
+                content: r.payload?.content || r.content || '',
+                source: r.payload?.source || r.metadata?.source || 'unknown',
+                repository:
+                  (r.payload?.source || r.metadata?.source || '').split('/')[0] || 'unknown',
+                file_path:
+                  (r.payload?.source || r.metadata?.source || '').split('/').slice(1).join('/') ||
+                  '',
+                language: r.payload?.language || r.metadata?.language || 'unknown',
+                similarity: r.score || r.similarity || 0,
+                type: r.payload?.type || r.metadata?.type || 'documentation',
+              }));
+
               result = {
                 query: toolArgs.query,
                 total_results: (searchResults || []).length,
-                results: limitedResults.map((r: any) => ({
-                  content: r.content,
-                  source: r.metadata.source,
-                  repository: r.metadata.source.split('/')[0],
-                  file_path: r.metadata.source.split('/').slice(1).join('/'),
-                  language: r.metadata.language,
-                  similarity: r.similarity
-                }))
+                search_time_ms: searchTime,
+                cached: !!cachedResults,
+                results: mappedResults,
+              };
+
+              console.log('Final MCP result structure:', JSON.stringify(result, null, 2));
+              break;
+
+            case 'docs.hybrid_search':
+              if (!toolArgs) throw new Error('Missing arguments for docs.hybrid_search');
+
+              const hybridSearchResult = await HybridSearchEngine.search(
+                toolArgs.query,
+                toolArgs.filters || {},
+                {
+                  searchType: toolArgs.search_type || 'hybrid',
+                  limit: toolArgs.limit || 10,
+                }
+              );
+
+              result = hybridSearchResult;
+              break;
+
+            case 'docs.search_suggestions':
+              if (!toolArgs) throw new Error('Missing arguments for docs.search_suggestions');
+
+              let suggestions: any[] = [];
+
+              switch (toolArgs.suggestion_type || 'completion') {
+                case 'completion':
+                  suggestions = await QueryEnhancer.getAutoCompletions(
+                    toolArgs.partial_query,
+                    toolArgs.limit || 5
+                  );
+                  break;
+
+                case 'correction':
+                  suggestions = await QueryEnhancer.getSpellingCorrections(toolArgs.partial_query);
+                  break;
+
+                case 'expansion':
+                  const expansion = await QueryEnhancer.expandQuery(toolArgs.partial_query);
+                  suggestions = expansion.expandedQueries.map((q) => ({
+                    text: q,
+                    type: 'expansion',
+                    confidence: 0.8,
+                  }));
+                  break;
+
+                case 'related':
+                  const relatedExpansion = await QueryEnhancer.expandQuery(toolArgs.partial_query);
+                  suggestions = relatedExpansion.relatedTerms.map((term) => ({
+                    text: term,
+                    type: 'related',
+                    confidence: 0.7,
+                  }));
+                  break;
+              }
+
+              result = {
+                partial_query: toolArgs.partial_query,
+                suggestion_type: toolArgs.suggestion_type || 'completion',
+                suggestions,
+                query_analysis: QueryEnhancer.analyzeQuery(toolArgs.partial_query),
+              };
+              break;
+
+            case 'docs.relationship_graph':
+              const graphOptions = toolArgs?.options || {};
+              const documentGraph = await RelationshipAnalyzer.buildDocumentationGraph(
+                toolArgs?.project_id,
+                {
+                  includeWeakRelationships: graphOptions.includeWeakRelationships || false,
+                  minStrength: graphOptions.minStrength || 0.3,
+                  maxNodes: graphOptions.maxNodes || 200,
+                }
+              );
+
+              result = {
+                graph: documentGraph,
+                summary: {
+                  total_nodes: documentGraph.nodes.length,
+                  total_relationships: documentGraph.relationships.length,
+                  clusters: documentGraph.clusters.length,
+                  density: documentGraph.metrics.density,
+                  top_connected: documentGraph.metrics.topConnectedNodes.slice(0, 5),
+                },
+              };
+              break;
+
+            case 'docs.find_related':
+              if (!toolArgs?.document_id)
+                throw new Error('Missing document_id for docs.find_related');
+
+              const relatedDocs = await RelationshipAnalyzer.getRelatedDocuments(
+                toolArgs.document_id,
+                toolArgs.limit || 10,
+                toolArgs.min_strength || 0.3
+              );
+
+              result = {
+                document_id: toolArgs.document_id,
+                related_count: relatedDocs.length,
+                related_documents: relatedDocs.map(({ document, relationship }) => ({
+                  id: document.id,
+                  title: document.title,
+                  url: document.url,
+                  content_type: document.contentType,
+                  language: document.language,
+                  complexity: document.complexity,
+                  popularity: document.popularity,
+                  relationship: {
+                    type: relationship.relationshipType,
+                    strength: relationship.strength,
+                    bidirectional: relationship.bidirectional,
+                    context: relationship.context,
+                  },
+                })),
+              };
+              break;
+
+            case 'docs.faceted_search':
+              if (!toolArgs?.query) throw new Error('Missing query for docs.faceted_search');
+
+              const { SearchFacetsEngine } = await import('@/lib/search-facets');
+              const facetAnalysis = await SearchFacetsEngine.generateFacets(
+                toolArgs.query,
+                toolArgs.filters || {},
+                projectId || undefined
+              );
+
+              result = {
+                query: toolArgs.query,
+                facet_analysis: facetAnalysis,
+                total_documents: facetAnalysis.totalDocuments,
+                filtered_documents: facetAnalysis.filteredDocuments,
+                available_facets: facetAnalysis.facets.map((facet) => ({
+                  key: facet.key,
+                  name: facet.name,
+                  type: facet.type,
+                  value_count: facet.values.length,
+                  top_values: facet.values.slice(0, 5).map((v) => ({
+                    label: v.label,
+                    count: v.count,
+                    selected: v.selected,
+                  })),
+                })),
+                suggestions: facetAnalysis.suggestions,
               };
               break;
 
             default:
-              return NextResponse.json({
-                jsonrpc: '2.0',
-                error: {
-                  code: -32601,
-                  message: 'Method not found',
-                  data: `Unknown tool: ${name}`
+              return NextResponse.json(
+                {
+                  jsonrpc: '2.0',
+                  error: {
+                    code: -32601,
+                    message: 'Method not found',
+                    data: `Unknown tool: ${name}`,
+                  },
+                  id: body.id,
                 },
-                id: body.id
-              }, { status: 400 });
+                { status: 400 }
+              );
           }
-          
+
           return NextResponse.json({
             jsonrpc: '2.0',
             result: {
-              content: [{
-                type: 'text',
-                text: JSON.stringify(result, null, 2)
-              }]
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify(result, null, 2),
+                },
+              ],
             },
-            id: body.id
+            id: body.id,
           });
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : 'Tool execution failed';
-          return NextResponse.json({
-            jsonrpc: '2.0',
-            error: {
-              code: -32603,
-              message: 'Internal error',
-              data: errorMessage
+          return NextResponse.json(
+            {
+              jsonrpc: '2.0',
+              error: {
+                code: -32603,
+                message: 'Internal error',
+                data: errorMessage,
+              },
+              id: body.id,
             },
-            id: body.id
-          }, { status: 500 });
+            { status: 500 }
+          );
         }
 
       default:
-        return NextResponse.json({
-          jsonrpc: '2.0',
-          error: {
-            code: -32601,
-            message: 'Method not found',
-            data: `Unknown method: ${method}`
+        return NextResponse.json(
+          {
+            jsonrpc: '2.0',
+            error: {
+              code: -32601,
+              message: 'Method not found',
+              data: `Unknown method: ${method}`,
+            },
+            id: body.id,
           },
-          id: body.id
-        }, { status: 400 });
+          { status: 400 }
+        );
     }
   } catch (error) {
     console.error('MCP API Error:', error);
     const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
-    return NextResponse.json({
-      jsonrpc: '2.0',
-      error: {
-        code: -32700,
-        message: 'Parse error',
-        data: errorMessage
+    return NextResponse.json(
+      {
+        jsonrpc: '2.0',
+        error: {
+          code: -32700,
+          message: 'Parse error',
+          data: errorMessage,
+        },
+        id: null,
       },
-      id: null
-    }, { status: 500 });
+      { status: 500 }
+    );
   }
 }
