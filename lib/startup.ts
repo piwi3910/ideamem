@@ -1,4 +1,5 @@
 import { startWorkers } from './workers';
+import { initializeDocumentationScheduler } from './documentation-scheduler';
 
 // Startup initialization
 let workersStarted = false;
@@ -14,8 +15,12 @@ export async function initializeApp() {
     const workers = startWorkers();
     workersStarted = true;
     console.log('BullMQ workers started successfully:', Object.keys(workers));
+    
+    // Initialize documentation scheduler after workers are started
+    console.log('Initializing documentation scheduler...');
+    await initializeDocumentationScheduler();
   } catch (error) {
-    console.error('Failed to start BullMQ workers:', error);
+    console.error('Failed to start BullMQ workers or documentation scheduler:', error);
     // Don't throw - app should still work without background jobs
   }
 }

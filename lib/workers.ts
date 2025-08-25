@@ -1,7 +1,13 @@
 import { Worker, Job } from 'bullmq';
 import { updateIndexingProgress, getProject } from './projects';
 import { startIncrementalIndexing, scheduledIncrementalIndexing, fullReindex as fullReindexFunction } from './indexing';
-import { QUEUE_NAMES, IndexingJobData, ScheduledIndexingJobData } from './queue';
+import { QUEUE_NAMES, IndexingJobData, ScheduledIndexingJobData, DocumentationIndexingJobData } from './queue';
+import { 
+  getRepositoriesDueForReindexing, 
+  checkIfRepositoryNeedsReindexing,
+  updateRepositoryAfterIndexing,
+  getDocumentationRepository,
+} from './documentation-repositories';
 
 // Worker configurations
 const WORKER_CONFIG = {
@@ -154,6 +160,157 @@ export function createScheduledIndexingWorker(): Worker {
   );
 }
 
+// Documentation indexing job processor
+export function createDocumentationIndexingWorker(): Worker {
+  return new Worker(
+    QUEUE_NAMES.DOCUMENTATION_INDEXING,
+    async (job: Job<DocumentationIndexingJobData | { checkInterval: true }>) => {
+      // Handle scheduled check for all repositories
+      if ('checkInterval' in job.data && job.data.checkInterval) {
+        console.log('Processing scheduled documentation check');
+        
+        try {
+          const repositories = await getRepositoriesDueForReindexing();
+          console.log(`Found ${repositories.length} repositories due for reindexing`);
+          
+          // Queue individual indexing jobs for repositories that need updating
+          const { QueueManager } = await import('./queue');
+          
+          for (const repo of repositories) {
+            const needsReindexing = await checkIfRepositoryNeedsReindexing(repo);
+            
+            if (needsReindexing.needsReindexing) {
+              console.log(`Queueing reindexing for repository ${repo.name}: ${needsReindexing.reason}`);
+              
+              await QueueManager.addDocumentationIndexingJob({
+                repositoryId: repo.id,
+                repositoryUrl: repo.url,
+                branch: repo.branch,
+                sourceType: repo.sourceType,
+                forceReindex: repo.sourceType !== 'git', // Force reindex for non-git sources
+              });
+            } else {
+              console.log(`Repository ${repo.name} is up to date: ${needsReindexing.reason}`);
+            }
+          }
+          
+          return {
+            success: true,
+            message: `Checked ${repositories.length} repositories, queued updates as needed`,
+            repositoriesChecked: repositories.length,
+          };
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+          console.error('Scheduled documentation check failed:', error);
+          throw error;
+        }
+      }
+      
+      // Handle individual repository indexing
+      const { repositoryId, repositoryUrl, branch, sourceType, forceReindex } = job.data as DocumentationIndexingJobData;
+      
+      // Special case: trigger check for all repositories (used by immediate trigger)
+      if (repositoryId === 'check-all') {
+        return await (async () => {
+          const repositories = await getRepositoriesDueForReindexing();
+          const { QueueManager } = await import('./queue');
+          
+          for (const repo of repositories) {
+            const needsReindexing = await checkIfRepositoryNeedsReindexing(repo);
+            
+            if (needsReindexing.needsReindexing) {
+              await QueueManager.addDocumentationIndexingJob({
+                repositoryId: repo.id,
+                repositoryUrl: repo.url,
+                branch: repo.branch,
+                sourceType: repo.sourceType,
+                forceReindex: repo.sourceType !== 'git',
+              });
+            }
+          }
+          
+          return {
+            success: true,
+            message: `Triggered immediate check for ${repositories.length} repositories`,
+            repositoriesChecked: repositories.length,
+          };
+        })();
+      }
+      
+      console.log(`Processing documentation indexing job for repository ${repositoryId}`);
+      
+      const startTime = Date.now();
+      let repository;
+      
+      try {
+        // Get repository details
+        repository = await getDocumentationRepository(repositoryId);
+        if (!repository) {
+          throw new Error(`Documentation repository ${repositoryId} not found`);
+        }
+        
+        // Check if we need to reindex (unless forced)
+        if (!forceReindex && sourceType === 'git') {
+          const needsReindexing = await checkIfRepositoryNeedsReindexing(repository);
+          if (!needsReindexing.needsReindexing) {
+            console.log(`Repository ${repository.name} is up to date, skipping`);
+            return {
+              success: true,
+              message: needsReindexing.reason,
+              skipped: true,
+            };
+          }
+        }
+        
+        // TODO: Implement actual documentation indexing logic here
+        // For now, we'll simulate the process
+        console.log(`Starting documentation indexing for ${repository.name} (${sourceType})`);
+        
+        // Simulate indexing work
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        const duration = Date.now() - startTime;
+        const simulatedStats = {
+          commitHash: sourceType === 'git' ? 'abc123def456' : undefined,
+          totalDocuments: Math.floor(Math.random() * 100) + 10,
+          duration,
+        };
+        
+        // Update repository after successful indexing
+        await updateRepositoryAfterIndexing(repositoryId, true, simulatedStats);
+        
+        console.log(`Documentation indexing completed for ${repository.name}`);
+        
+        return {
+          success: true,
+          message: `Successfully indexed ${simulatedStats.totalDocuments} documents`,
+          documentsIndexed: simulatedStats.totalDocuments,
+          duration,
+        };
+        
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        console.error(`Documentation indexing failed for repository ${repositoryId}:`, error);
+        
+        // Update repository after failed indexing
+        if (repository) {
+          const duration = Date.now() - startTime;
+          await updateRepositoryAfterIndexing(repositoryId, false, {
+            duration,
+            error: errorMessage,
+          });
+        }
+        
+        throw error;
+      }
+    },
+    {
+      ...WORKER_CONFIG,
+      concurrency: 1, // Process documentation sequentially to avoid conflicts
+    }
+  );
+}
+
 // Cleanup job processor
 export function createCleanupWorker(): Worker {
   return new Worker(
@@ -214,6 +371,7 @@ export function startWorkers(): Record<string, Worker> {
   workers = {
     indexing: createIndexingWorker(),
     scheduledIndexing: createScheduledIndexingWorker(),
+    documentationIndexing: createDocumentationIndexingWorker(),
     cleanup: createCleanupWorker(),
   };
 

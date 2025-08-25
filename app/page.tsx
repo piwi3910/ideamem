@@ -10,6 +10,8 @@ import {
   ChartBarIcon,
   CircleStackIcon,
   ArrowPathIcon,
+  QueueListIcon,
+  CalendarIcon,
 } from '@heroicons/react/24/outline';
 import MetricCard from '@/components/MetricCard';
 import RecentActivity from '@/components/RecentActivity';
@@ -55,6 +57,34 @@ interface DashboardMetrics {
     vectorsAdded: number;
   }>;
   timestamp: string;
+}
+
+interface QueueStats {
+  [queueName: string]: {
+    waiting: number;
+    active: number;
+    completed: number;
+    failed: number;
+    paused: boolean;
+    error?: string;
+  };
+}
+
+interface QueueMetrics {
+  queueStats: QueueStats;
+  documentationScheduler: {
+    enabled: boolean;
+    interval: number;
+    activeRepositories: number;
+    scheduledJobId: string | null;
+  };
+  summary: {
+    totalJobs: number;
+    totalActive: number;
+    totalWaiting: number;
+    totalCompleted: number;
+    totalFailed: number;
+  };
 }
 
 // Qdrant Performance Metrics Component
@@ -190,12 +220,17 @@ export default function DashboardPage() {
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [queueMetrics, setQueueMetrics] = useState<QueueMetrics | null>(null);
 
   useEffect(() => {
     fetchMetrics();
+    loadQueueMetrics();
     
     // Refresh metrics every 30 seconds
-    const interval = setInterval(fetchMetrics, 30000);
+    const interval = setInterval(() => {
+      fetchMetrics();
+      loadQueueMetrics();
+    }, 30000);
     return () => clearInterval(interval);
   }, []);
 
@@ -210,6 +245,18 @@ export default function DashboardPage() {
       setError(err instanceof Error ? err.message : 'Failed to load metrics');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadQueueMetrics = async () => {
+    try {
+      const response = await fetch('/api/admin/queue-stats');
+      if (response.ok) {
+        const data = await response.json();
+        setQueueMetrics(data);
+      }
+    } catch (error) {
+      console.error('Failed to load queue metrics:', error);
     }
   };
 
@@ -254,11 +301,107 @@ export default function DashboardPage() {
               Last updated: {new Date(metrics.timestamp).toLocaleTimeString()}
             </span>
           )}
-          <Link href="/dashboard" className="btn btn-primary">
+          <Link href="/projects" className="btn btn-primary">
             Manage Projects
           </Link>
         </div>
       </div>
+
+      {/* Queue & Scheduling Metrics */}
+      {queueMetrics && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Job Summary */}
+          <div className="card">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 bg-blue-100 rounded-lg">
+                <QueueListIcon className="h-6 w-6 text-blue-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Job Queue</h3>
+                <p className="text-sm text-gray-600">Background processing status</p>
+              </div>
+            </div>
+            
+            <div className="space-y-3">
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">Active Jobs</span>
+                <span className="font-medium text-blue-600">{queueMetrics.summary.totalActive}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">Waiting</span>
+                <span className="font-medium text-yellow-600">{queueMetrics.summary.totalWaiting}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">Completed</span>
+                <span className="font-medium text-green-600">{queueMetrics.summary.totalCompleted}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">Failed</span>
+                <span className="font-medium text-red-600">{queueMetrics.summary.totalFailed}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Documentation Scheduler */}
+          <div className="card">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 bg-purple-100 rounded-lg">
+                <CalendarIcon className="h-6 w-6 text-purple-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Documentation</h3>
+                <p className="text-sm text-gray-600">Automatic reindexing schedule</p>
+              </div>
+            </div>
+            
+            <div className="space-y-3">
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">Status</span>
+                <span className={`font-medium ${queueMetrics.documentationScheduler.enabled ? 'text-green-600' : 'text-gray-500'}`}>
+                  {queueMetrics.documentationScheduler.enabled ? 'Enabled' : 'Disabled'}
+                </span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">Interval</span>
+                <span className="font-medium text-gray-900">
+                  {queueMetrics.documentationScheduler.interval} days
+                </span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">Active Repos</span>
+                <span className="font-medium text-blue-600">{queueMetrics.documentationScheduler.activeRepositories}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Queue Details */}
+          <div className="card">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 bg-green-100 rounded-lg">
+                <CpuChipIcon className="h-6 w-6 text-green-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Queues</h3>
+                <p className="text-sm text-gray-600">Individual queue status</p>
+              </div>
+            </div>
+            
+            <div className="space-y-2 text-xs">
+              {Object.entries(queueMetrics.queueStats).map(([queueName, stats]) => (
+                <div key={queueName} className="flex items-center justify-between py-1">
+                  <div className="flex items-center gap-2">
+                    <div className={`w-2 h-2 rounded-full ${stats.error ? 'bg-red-500' : stats.paused ? 'bg-yellow-500' : 'bg-green-500'}`}></div>
+                    <span className="text-gray-700 font-medium capitalize">{queueName.replace('-', ' ')}</span>
+                  </div>
+                  <div className="text-gray-600">
+                    {stats.error ? 'Error' : `${stats.active}/${stats.waiting}`}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Key Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -434,7 +577,7 @@ export default function DashboardPage() {
             
             <div className="pt-2 border-t border-gray-200">
               <Link
-                href="/dashboard"
+                href="/projects"
                 className="block w-full text-center py-2 px-3 bg-blue-100 hover:bg-blue-200 rounded text-sm font-medium text-blue-700"
               >
                 Manage All Projects

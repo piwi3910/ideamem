@@ -13,11 +13,18 @@ datasource db {
 
 // Application configuration (replaces config.json)
 model Config {
-  id        String   @id @default("default")
-  qdrantUrl String   @default("http://localhost:6333")
-  ollamaUrl String   @default("http://localhost:11434")
-  updatedAt DateTime @updatedAt
-  createdAt DateTime @default(now())
+  id                              String   @id @default("default")
+  qdrantUrl                       String   @default("http://localhost:6333")
+  ollamaUrl                       String   @default("http://localhost:11434")
+  
+  // Documentation scheduling settings
+  docReindexEnabled               Boolean  @default(true)
+  docReindexInterval              Int      @default(14) // days (14 days default)
+  docReindexNextRun               DateTime?
+  docReindexLastRun               DateTime?
+  
+  updatedAt                       DateTime @updatedAt
+  createdAt                       DateTime @default(now())
 
   @@map("config")
 }
@@ -116,6 +123,40 @@ enum TriggerType {
   WEBHOOK
   SCHEDULED
   API
+}
+
+// Documentation repositories for tracking git-based documentation
+model DocumentationRepository {
+  id                    String   @id @default(uuid())
+  name                  String   @unique
+  url                   String   @unique  // Git repository URL
+  branch                String   @default("main")
+  sourceType            String   @default("git") // 'git', 'llmstxt', 'website'
+  
+  // Git commit tracking for incremental indexing
+  lastIndexedCommit     String?  // Git commit ID of last successful index
+  lastIndexedAt         DateTime?
+  
+  // Scheduling configuration
+  autoReindexEnabled    Boolean  @default(true)
+  reindexInterval       Int      @default(14) // days (14 days default)
+  nextReindexAt         DateTime?
+  
+  // Repository metadata
+  description           String?
+  language              String?  // Primary programming language
+  isActive              Boolean  @default(true)
+  
+  // Indexing statistics
+  totalDocuments        Int      @default(0)
+  lastIndexingDuration  Int?     // milliseconds
+  lastIndexingStatus    String?  // 'SUCCESS', 'FAILED', 'PARTIAL'
+  lastIndexingError     String?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@map("documentation_repositories")
 }
 
 // Enhanced documentation metadata

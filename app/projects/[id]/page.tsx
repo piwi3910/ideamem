@@ -221,7 +221,7 @@ export default function ProjectDetailPage() {
       });
 
       if (response.ok) {
-        router.push('/dashboard');
+        router.push('/projects');
       }
     } catch (error) {
       console.error('Failed to delete project:', error);
@@ -384,8 +384,8 @@ export default function ProjectDetailPage() {
         <div className="text-center">
           <ExclamationCircleIcon className="h-16 w-16 text-red-300 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">{error || 'Project not found'}</h3>
-          <Link href="/dashboard" className="btn btn-primary">
-            Back to Dashboard
+          <Link href="/projects" className="btn btn-primary">
+            Back to Projects
           </Link>
         </div>
       </div>
@@ -397,7 +397,7 @@ export default function ProjectDetailPage() {
       {/* Page Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <Link href="/dashboard" className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100">
+          <Link href="/projects" className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100">
             <ArrowLeftIcon className="h-5 w-5" />
           </Link>
           <div>

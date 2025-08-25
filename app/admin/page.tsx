@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, FormEvent } from 'react';
-import Link from 'next/link';
 import {
   CheckCircleIcon,
   ExclamationCircleIcon,
@@ -10,6 +9,8 @@ import {
   ServerIcon,
   CpuChipIcon,
   CloudArrowDownIcon,
+  DocumentIcon,
+  CalendarIcon,
 } from '@heroicons/react/24/outline';
 import { twMerge } from 'tailwind-merge';
 
@@ -17,6 +18,8 @@ import { twMerge } from 'tailwind-merge';
 interface AppConfig {
   qdrantUrl: string;
   ollamaUrl: string;
+  docReindexEnabled: boolean;
+  docReindexInterval: number; // days
 }
 
 interface Status {
@@ -25,7 +28,13 @@ interface Status {
 }
 
 export default function AdminPage() {
-  const [config, setConfig] = useState<AppConfig>({ qdrantUrl: '', ollamaUrl: '' });
+  const [config, setConfig] = useState<AppConfig>({ 
+    qdrantUrl: '', 
+    ollamaUrl: '',
+    docReindexEnabled: true,
+    docReindexInterval: 14,
+  });
+  const [configLoaded, setConfigLoaded] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
   const [qdrantStatus, setQdrantStatus] = useState<Status>({ status: 'unknown', message: '' });
   const [ollamaStatus, setOllamaStatus] = useState<Status>({ status: 'unknown', message: '' });
@@ -40,8 +49,17 @@ export default function AdminPage() {
       .then((res) => res.json())
       .then((data) => {
         if (data) {
-          setConfig(data);
+          setConfig({
+            qdrantUrl: data.qdrantUrl || '',
+            ollamaUrl: data.ollamaUrl || '',
+            docReindexEnabled: data.docReindexEnabled ?? true,
+            docReindexInterval: data.docReindexInterval ?? 14,
+          });
         }
+        setConfigLoaded(true);
+      })
+      .catch(() => {
+        setConfigLoaded(true);
       });
   }, []);
 
@@ -297,43 +315,97 @@ export default function AdminPage() {
             </div>
 
 
-            {/* Background Job Processing */}
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-              <div className="px-6 py-4 border-b border-gray-200">
-                <h3 className="text-lg font-medium text-gray-900">Background Job Processing</h3>
-                <p className="text-sm text-gray-500 mt-1">
-                  Automated indexing and scheduling with BullMQ + Redis
-                </p>
+            {/* Documentation Scheduling */}
+            <div className="card">
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-purple-100 rounded-lg">
+                    <DocumentIcon className="h-6 w-6 text-purple-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900">Documentation Scheduling</h3>
+                    <p className="text-sm text-gray-600">
+                      Automated reindexing of all documentation sources
+                    </p>
+                  </div>
+                </div>
               </div>
-              
-              <div className="p-6">
-                <div className="bg-green-50 rounded-lg p-4">
-                  <div className="flex items-center mb-3">
-                    <CheckCircleIcon className="h-6 w-6 text-green-500 mr-2" />
-                    <h4 className="font-medium text-green-900">✅ Fully Automated System</h4>
-                  </div>
-                  <p className="text-sm text-green-700 mb-3">
-                    All background processing is now handled automatically. No manual intervention required.
-                  </p>
-                  <div className="text-xs text-green-600 space-y-1 pl-4">
-                    <div>• Workers auto-start when the application launches</div>
-                    <div>• Indexing jobs queue automatically when projects are updated</div>
-                    <div>• Scheduled indexing runs based on each project's configured interval</div>
-                    <div>• Failed jobs retry automatically with smart backoff timing</div>
-                    <div>• Redis provides persistent job storage and coordination</div>
-                  </div>
-                </div>
 
-                <div className="mt-4 bg-blue-50 rounded-lg p-4">
-                  <h4 className="font-medium text-gray-900 mb-2">🔧 Queue Types</h4>
-                  <div className="text-sm text-gray-600 space-y-2">
-                    <div><strong>indexing</strong> - Manual and webhook-triggered indexing jobs</div>
-                    <div><strong>scheduled-indexing</strong> - Automated recurring indexing based on project settings</div>
-                    <div><strong>cleanup</strong> - Maintenance tasks and resource cleanup</div>
+              <div className="space-y-4">
+                {configLoaded ? (
+                  <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <CalendarIcon className="h-5 w-5 text-gray-600" />
+                      <div>
+                        <h4 className="font-medium text-gray-900">Automatic Reindexing</h4>
+                        <p className="text-sm text-gray-600">
+                          Enable scheduled reindexing of all documentation sources
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <label className="flex items-center">
+                        <input
+                          type="checkbox"
+                          checked={config.docReindexEnabled}
+                          onChange={(e) => setConfig({ ...config, docReindexEnabled: e.target.checked })}
+                          className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                        />
+                        <span className="ml-2 text-sm text-gray-700">Enabled</span>
+                      </label>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg animate-pulse">
+                    <div className="flex items-center gap-3">
+                      <div className="h-5 w-5 bg-gray-300 rounded"></div>
+                      <div>
+                        <div className="h-4 w-32 bg-gray-300 rounded mb-1"></div>
+                        <div className="h-3 w-48 bg-gray-300 rounded"></div>
+                      </div>
+                    </div>
+                    <div className="h-4 w-16 bg-gray-300 rounded"></div>
+                  </div>
+                )}
+
+                {configLoaded ? (
+                  <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                    <label className="label">Reindexing Interval</label>
+                    <div className="flex items-center gap-3 mt-2">
+                      <input
+                        type="number"
+                        min="1"
+                        max="365"
+                        step="1"
+                        value={config.docReindexInterval}
+                        onChange={(e) => setConfig({ ...config, docReindexInterval: parseInt(e.target.value) || 14 })}
+                        className="input w-32"
+                        disabled={!config.docReindexEnabled}
+                      />
+                      <span className="text-sm text-gray-600">days</span>
+                    </div>
+                    <div className="mt-3">
+                      <p className="text-xs text-blue-700">
+                        <strong>Note:</strong> All documentation sources are checked every {config.docReindexInterval} days since their last indexing. Git repositories only reindex when new commits are detected, while web sources always reindex on schedule.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-4 bg-blue-50 rounded-lg border border-blue-200 animate-pulse">
+                    <div className="h-5 w-24 bg-blue-200 rounded mb-2"></div>
+                    <div className="flex items-center gap-3 mt-2">
+                      <div className="h-8 w-32 bg-blue-200 rounded"></div>
+                      <div className="h-4 w-8 bg-blue-200 rounded"></div>
+                    </div>
+                    <div className="mt-3">
+                      <div className="h-3 w-full bg-blue-200 rounded mb-1"></div>
+                      <div className="h-3 w-3/4 bg-blue-200 rounded"></div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
+
 
             {/* Save Button */}
             <div className="flex justify-end">

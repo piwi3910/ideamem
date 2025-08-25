@@ -15,10 +15,19 @@ export interface ScheduledIndexingJobData {
   interval: number;
 }
 
+export interface DocumentationIndexingJobData {
+  repositoryId: string;
+  repositoryUrl: string;
+  branch: string;
+  sourceType: 'git' | 'llmstxt' | 'website';
+  forceReindex?: boolean; // Override git commit checking
+}
+
 // Queue names
 export const QUEUE_NAMES = {
   INDEXING: 'indexing',
   SCHEDULED_INDEXING: 'scheduled-indexing',
+  DOCUMENTATION_INDEXING: 'documentation-indexing',
   CLEANUP: 'cleanup',
 } as const;
 
@@ -69,6 +78,7 @@ export function getQueues(): Record<string, Queue> {
     queues = {
       [QUEUE_NAMES.INDEXING]: new Queue(QUEUE_NAMES.INDEXING, getQueueConfig(QUEUE_NAMES.INDEXING)),
       [QUEUE_NAMES.SCHEDULED_INDEXING]: new Queue(QUEUE_NAMES.SCHEDULED_INDEXING, getQueueConfig(QUEUE_NAMES.SCHEDULED_INDEXING)),
+      [QUEUE_NAMES.DOCUMENTATION_INDEXING]: new Queue(QUEUE_NAMES.DOCUMENTATION_INDEXING, getQueueConfig(QUEUE_NAMES.DOCUMENTATION_INDEXING)),
       [QUEUE_NAMES.CLEANUP]: new Queue(QUEUE_NAMES.CLEANUP, getQueueConfig(QUEUE_NAMES.CLEANUP)),
     };
   }
@@ -117,6 +127,52 @@ export class QueueManager {
     
     // Remove repeatable job
     const jobId = `scheduled-${projectId}`;
+    const repeatableJobs = await queue.getRepeatableJobs();
+    
+    for (const repeatableJob of repeatableJobs) {
+      if (repeatableJob.id === jobId) {
+        await queue.removeRepeatableByKey(repeatableJob.key);
+      }
+    }
+  }
+
+  // Add documentation indexing job
+  static async addDocumentationIndexingJob(data: DocumentationIndexingJobData, priority: number = JOB_PRIORITIES.NORMAL) {
+    const queue = this.queues[QUEUE_NAMES.DOCUMENTATION_INDEXING];
+    
+    return await queue.add(
+      'process-documentation-indexing',
+      data,
+      {
+        priority,
+        jobId: `doc-${data.repositoryId}-${Date.now()}`, // Unique ID for doc job
+        delay: 0,
+      }
+    );
+  }
+
+  // Add scheduled documentation indexing job
+  static async addScheduledDocumentationIndexingJob(interval: number) {
+    const queue = this.queues[QUEUE_NAMES.DOCUMENTATION_INDEXING];
+    
+    return await queue.add(
+      'process-scheduled-documentation-indexing',
+      { checkInterval: true },
+      {
+        priority: JOB_PRIORITIES.LOW,
+        repeat: {
+          every: interval * 24 * 60 * 60 * 1000, // Convert days to milliseconds
+        },
+        jobId: 'scheduled-documentation-check', // Single scheduled checker
+      }
+    );
+  }
+
+  // Remove scheduled documentation indexing job
+  static async removeScheduledDocumentationIndexingJob() {
+    const queue = this.queues[QUEUE_NAMES.DOCUMENTATION_INDEXING];
+    
+    const jobId = 'scheduled-documentation-check';
     const repeatableJobs = await queue.getRepeatableJobs();
     
     for (const repeatableJob of repeatableJobs) {

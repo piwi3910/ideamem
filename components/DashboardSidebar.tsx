@@ -26,7 +26,7 @@ interface SidebarProps {
 
 const navigationItems = [
   { name: 'Dashboard', href: '/', icon: HomeIcon },
-  { name: 'Projects', href: '/dashboard', icon: FolderIcon },
+  { name: 'Projects', href: '/projects', icon: FolderIcon },
   { name: 'Rules', href: '/rules', icon: ShieldCheckIcon },
   { name: 'Preferences', href: '/preferences', icon: CogIcon },
   { name: 'Documentation', href: '/docs', icon: DocumentTextIcon },

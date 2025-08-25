@@ -75,6 +75,7 @@ interface SearchResult {
   metadata?: Record<string, any>;
 }
 
+
 export default function DashboardPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -100,6 +101,7 @@ export default function DashboardPage() {
   });
 
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+
 
   // Load projects on component mount
   useEffect(() => {
@@ -375,6 +377,7 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
+
       {/* Page Header */}
       <div className="flex items-center justify-between">
         <div>
