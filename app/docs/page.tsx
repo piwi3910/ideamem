@@ -225,15 +225,11 @@ export default function DocsPage() {
       </div>
 
       
-      {/* Add Repository Button */}
+      {/* Documentation Sources Header */}
       <div className="flex justify-between items-center">
         <h3 className="text-lg font-semibold text-gray-900">
           Documentation Sources ({repositories.length})
         </h3>
-        <button onClick={() => setShowAddForm(!showAddForm)} className="btn btn-primary">
-          <PlusIcon className="h-4 w-4 mr-2" />
-          Add Source
-        </button>
       </div>
 
       {/* Add Repository Form */}

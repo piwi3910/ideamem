@@ -257,15 +257,11 @@ export default function PreferencesPage() {
         </div>
       </div>
 
-      {/* Add Preference Button */}
+      {/* Current Preferences Header */}
       <div className="flex justify-between items-center">
             <h3 className="text-lg font-semibold text-gray-900">
               Current Preferences ({preferences.length})
             </h3>
-            <button onClick={() => setShowAddForm(!showAddForm)} className="btn btn-primary">
-              <PlusIcon className="h-4 w-4 mr-2" />
-              Add New Preference
-            </button>
           </div>
 
           {/* Add Preference Form */}
