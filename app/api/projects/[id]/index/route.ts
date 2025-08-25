@@ -52,12 +52,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       console.log(`Current queue stats after job addition:`, queueStats.indexing);
       
     } catch (queueError) {
-      console.error('Failed to add reindex job to queue:', queueError);
-      console.error('Queue error details:', {
+      const errorDetails = queueError instanceof Error ? {
         message: queueError.message,
         stack: queueError.stack,
         name: queueError.name
-      });
+      } : { message: String(queueError) };
+      
+      console.error('Failed to add reindex job to queue:', queueError);
+      console.error('Queue error details:', errorDetails);
       // Cancel the database job if queue fails
       await cancelIndexingJob(id);
       throw queueError;

@@ -21,7 +21,19 @@ export interface SemanticChunk {
     | 'module'
     | 'struct'
     | 'package'
-    | 'constant';
+    | 'constant'
+    | 'heading'
+    | 'text'
+    | 'code-block'
+    | 'list'
+    | 'quote'
+    | 'table'
+    | 'image'
+    | 'link'
+    | 'document'
+    | 'export'
+    | 'code'
+    | 'enum';
   name: string;
   content: string;
   startLine: number;
@@ -38,6 +50,12 @@ export interface SemanticChunk {
     async?: boolean;
     static?: boolean;
     abstract?: boolean;
+    // Markdown-specific metadata
+    headingLevel?: number;
+    codeLanguage?: string;
+    // TypeScript-specific metadata  
+    nodeKind?: string;
+    exported?: boolean;
   };
 }
 
@@ -46,6 +64,11 @@ export interface ParseResult {
   success: boolean;
   error?: string;
   fallbackUsed?: boolean;
+  language?: string;
+  metadata?: {
+    totalChunks: number;
+    parser: string;
+  };
 }
 
 export abstract class BaseParser {
@@ -90,6 +113,11 @@ export const SUPPORTED_LANGUAGES = {
   '.tsx': 'typescript',
   '.js': 'javascript',
   '.jsx': 'javascript',
+  '.md': 'markdown',
+  '.markdown': 'markdown',
+  '.mdown': 'markdown',
+  '.mkd': 'markdown',
+  '.mdx': 'markdown',
   '.py': 'python',
   '.go': 'go',
   '.json': 'json',

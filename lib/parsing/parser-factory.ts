@@ -6,6 +6,8 @@ import { GoParser } from './go-parser';
 import { DockerfileParser } from './dockerfile-parser';
 import { AnsibleParser } from './ansible-parser';
 import { TerraformParser } from './terraform-parser';
+import { TypeScriptParser } from './typescript-parser';
+import { MarkdownParser } from './markdown-parser';
 
 export class ParserFactory {
   private parsers: Map<string, BaseParser>;
@@ -19,6 +21,8 @@ export class ParserFactory {
 
   private initializeParsers(): void {
     const parsers = [
+      new TypeScriptParser(),
+      new MarkdownParser(),
       new JSONParser(),
       new YAMLParser(),
       new PythonParser(),

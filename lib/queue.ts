@@ -123,7 +123,8 @@ export class QueueManager {
         console.log(`No existing job found for ${jobId}, will create new job`);
       }
     } catch (error) {
-      console.log(`Error checking for existing job ${jobId}:`, error.message);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.log(`Error checking for existing job ${jobId}:`, errorMessage);
       // Job doesn't exist, continue
     }
     

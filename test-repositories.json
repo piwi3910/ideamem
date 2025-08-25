@@ -1,0 +1,196 @@
+{
+  "testRepositories": {
+    "javascript": [
+      {
+        "name": "Node.js",
+        "url": "https://github.com/nodejs/node",
+        "description": "Node.js JavaScript runtime",
+        "languages": ["javascript"],
+        "priority": "high"
+      },
+      {
+        "name": "TypeScript",
+        "url": "https://github.com/microsoft/TypeScript",
+        "description": "TypeScript language and compiler",
+        "languages": ["typescript"],
+        "priority": "high"
+      },
+      {
+        "name": "React",
+        "url": "https://github.com/facebook/react",
+        "description": "React JavaScript library for building UIs",
+        "languages": ["javascript", "typescript"],
+        "priority": "high"
+      },
+      {
+        "name": "Next.js",
+        "url": "https://github.com/vercel/next.js",
+        "description": "React framework for production",
+        "languages": ["javascript", "typescript"],
+        "priority": "high"
+      },
+      {
+        "name": "Express.js",
+        "url": "https://github.com/expressjs/express",
+        "description": "Fast, minimalist web framework for Node.js",
+        "languages": ["javascript"],
+        "priority": "medium"
+      },
+      {
+        "name": "Fastify",
+        "url": "https://github.com/fastify/fastify",
+        "description": "Fast web framework for Node.js",
+        "languages": ["javascript", "typescript"],
+        "priority": "medium"
+      },
+      {
+        "name": "Vite",
+        "url": "https://github.com/vitejs/vite",
+        "description": "Next generation frontend build tool",
+        "languages": ["javascript", "typescript"],
+        "priority": "medium"
+      }
+    ],
+    "python": [
+      {
+        "name": "CPython",
+        "url": "https://github.com/python/cpython",
+        "description": "The Python programming language",
+        "languages": ["python"],
+        "priority": "high"
+      },
+      {
+        "name": "Django",
+        "url": "https://github.com/django/django",
+        "description": "High-level Python web framework",
+        "languages": ["python"],
+        "priority": "high"
+      },
+      {
+        "name": "FastAPI",
+        "url": "https://github.com/tiangolo/fastapi",
+        "description": "Modern, fast web framework for building APIs",
+        "languages": ["python"],
+        "priority": "high"
+      },
+      {
+        "name": "Flask",
+        "url": "https://github.com/pallets/flask",
+        "description": "Lightweight WSGI web application framework",
+        "languages": ["python"],
+        "priority": "medium"
+      },
+      {
+        "name": "Pandas",
+        "url": "https://github.com/pandas-dev/pandas",
+        "description": "Flexible data analysis library",
+        "languages": ["python"],
+        "priority": "medium"
+      },
+      {
+        "name": "Requests",
+        "url": "https://github.com/psf/requests",
+        "description": "Simple HTTP library for Python",
+        "languages": ["python"],
+        "priority": "medium"
+      }
+    ],
+    "go": [
+      {
+        "name": "Go",
+        "url": "https://github.com/golang/go",
+        "description": "The Go programming language",
+        "languages": ["go"],
+        "priority": "high"
+      },
+      {
+        "name": "Gin",
+        "url": "https://github.com/gin-gonic/gin",
+        "description": "HTTP web framework written in Go",
+        "languages": ["go"],
+        "priority": "high"
+      },
+      {
+        "name": "Echo",
+        "url": "https://github.com/labstack/echo",
+        "description": "High performance, minimalist Go web framework",
+        "languages": ["go"],
+        "priority": "medium"
+      },
+      {
+        "name": "GORM",
+        "url": "https://github.com/go-gorm/gorm",
+        "description": "ORM library for Go",
+        "languages": ["go"],
+        "priority": "medium"
+      },
+      {
+        "name": "Cobra",
+        "url": "https://github.com/spf13/cobra",
+        "description": "CLI library for Go",
+        "languages": ["go"],
+        "priority": "low"
+      }
+    ],
+    "infrastructure": [
+      {
+        "name": "Docker",
+        "url": "https://github.com/docker/docker",
+        "description": "Container platform",
+        "languages": ["dockerfile"],
+        "priority": "high"
+      },
+      {
+        "name": "Terraform",
+        "url": "https://github.com/hashicorp/terraform",
+        "description": "Infrastructure as Code",
+        "languages": ["terraform"],
+        "priority": "high"
+      },
+      {
+        "name": "Ansible",
+        "url": "https://github.com/ansible/ansible",
+        "description": "IT automation platform",
+        "languages": ["yaml", "ansible"],
+        "priority": "high"
+      },
+      {
+        "name": "Kubernetes",
+        "url": "https://github.com/kubernetes/kubernetes",
+        "description": "Container orchestration system",
+        "languages": ["yaml", "go"],
+        "priority": "medium"
+      }
+    ],
+    "configuration": [
+      {
+        "name": "VS Code",
+        "url": "https://github.com/microsoft/vscode",
+        "description": "Code editor with extensive JSON/YAML configs",
+        "languages": ["json", "yaml"],
+        "priority": "high"
+      },
+      {
+        "name": "Prisma",
+        "url": "https://github.com/prisma/prisma",
+        "description": "Database toolkit with JSON schemas",
+        "languages": ["json", "typescript"],
+        "priority": "medium"
+      }
+    ]
+  },
+  "testingPriority": {
+    "high": "Essential libraries - test these first for core functionality",
+    "medium": "Important libraries - test for comprehensive coverage", 
+    "low": "Additional libraries - test for edge cases and completeness"
+  },
+  "usage": {
+    "description": "This file contains curated git repositories for testing IdeaMem's indexing system",
+    "instructions": [
+      "Start with 'high' priority repositories to test core functionality",
+      "Use these URLs directly in the IdeaMem documentation import interface",
+      "Each repository tests different aspects of our parsing system",
+      "Monitor indexing performance and accuracy with these diverse codebases"
+    ]
+  }
+}
