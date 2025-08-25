@@ -76,7 +76,7 @@ export default function DashboardSidebar({
         className={`
           fixed lg:relative top-0 left-0 h-screen z-40
           bg-white border-r border-gray-200 shadow-sm
-          transition-all duration-300 ease-in-out
+          transition-all duration-300 ease-in-out flex flex-col
           ${collapsed ? 'w-16' : 'w-64'}
           ${mobileMenuOpen 
             ? 'translate-x-0' 
@@ -115,7 +115,7 @@ export default function DashboardSidebar({
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 px-2 py-4 space-y-1">
+        <nav className="flex-1 px-2 py-4 space-y-1 overflow-y-auto">
           {navigationItems.map((item) => {
             const Icon = item.icon;
             const active = isActive(item.href);
@@ -150,7 +150,7 @@ export default function DashboardSidebar({
         </nav>
 
         {/* Footer */}
-        <div className="border-t border-gray-200 p-4">
+        <div className="border-t border-gray-200 p-4 flex-shrink-0">
           {!collapsed ? (
             <div className="text-xs text-gray-500 space-y-1">
               <div>IdeaMem v1.0</div>
