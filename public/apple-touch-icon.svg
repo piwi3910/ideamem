@@ -1,0 +1,19 @@
+<svg width="180" height="180" viewBox="0 0 180 180" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background for Apple touch icon -->
+  <rect width="180" height="180" rx="32" fill="#7C3AED"/>
+  
+  <!-- Light bulb outline - scaled and centered -->
+  <path
+    d="M90 35C110.4 35 127 51.6 127 72C127 83.5 122.3 93.8 115 101.5V115C115 120.5 111.5 125 106 125H74C68.5 125 65 120.5 65 115V101.5C57.7 93.8 53 83.5 53 72C53 51.6 69.6 35 90 35Z"
+    stroke="white"
+    stroke-width="8"
+    fill="none"
+  />
+  
+  <!-- Light bulb base/screw threading -->
+  <g stroke="white" stroke-width="6" opacity="0.9">
+    <line x1="67" y1="132" x2="113" y2="132"/>
+    <line x1="70" y1="142" x2="110" y2="142"/>
+    <line x1="74" y1="152" x2="106" y2="152"/>
+  </g>
+</svg>

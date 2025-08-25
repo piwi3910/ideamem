@@ -1,0 +1,16 @@
+<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Light bulb outline -->
+  <path
+    d="M16 3C19.866 3 23 6.134 23 10C23 12.5 21.8 14.7 20 16.2V20C20 21.1 19.1 22 18 22H14C12.9 22 12 21.1 12 20V16.2C10.2 14.7 9 12.5 9 10C9 6.134 12.134 3 16 3Z"
+    stroke="#7C3AED"
+    stroke-width="2"
+    fill="none"
+  />
+  
+  <!-- Light bulb base/screw threading -->
+  <g stroke="#7C3AED" stroke-width="1.5" opacity="0.8">
+    <line x1="12" y1="23" x2="20" y2="23"/>
+    <line x1="12.5" y1="25" x2="19.5" y2="25"/>
+    <line x1="13" y1="27" x2="19" y2="27"/>
+  </g>
+</svg>

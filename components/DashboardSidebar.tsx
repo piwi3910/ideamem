@@ -15,6 +15,7 @@ import {
   Bars3Icon,
   XMarkIcon,
 } from '@heroicons/react/24/outline';
+import IdeaMemLogo from './IdeaMemLogo';
 
 interface SidebarProps {
   collapsed: boolean;
@@ -87,17 +88,12 @@ export default function DashboardSidebar({
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-gray-200">
           {!collapsed && (
-            <div className="flex items-center">
-              <div className="w-8 h-8 bg-purple-600 rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-sm">IM</span>
-              </div>
-              <span className="ml-3 text-lg font-semibold text-gray-900">IdeaMem</span>
-            </div>
+            <IdeaMemLogo size={32} className="text-purple-600" showText={true} />
           )}
           
           {collapsed && (
-            <div className="w-8 h-8 bg-purple-600 rounded-lg flex items-center justify-center mx-auto">
-              <span className="text-white font-bold text-sm">IM</span>
+            <div className="mx-auto">
+              <IdeaMemLogo size={32} className="text-purple-600" showText={false} />
             </div>
           )}
 
