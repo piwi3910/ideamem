@@ -1,17 +1,17 @@
 import { NextResponse } from 'next/server';
-import { writeFile, readFile, mkdir, readdir, rm } from 'fs/promises';
+import { readdir, readFile, rm } from 'fs/promises';
 import { existsSync } from 'fs';
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import simpleGit from 'simple-git';
 import * as os from 'os';
+import { PrismaClient } from '@/lib/generated/prisma';
 
 interface DocRepository {
   id: string;
   name: string;
   sourceType: 'git' | 'llmstxt' | 'website';
-  gitUrl?: string;
-  url?: string; // For llms.txt or website URLs
+  url: string; // Changed from gitUrl/url to single url field
   branch?: string;
   description?: string;
   languages: string[];
@@ -23,8 +23,8 @@ interface DocRepository {
   updatedAt: string;
 }
 
-const DATA_DIR = path.join(process.cwd(), 'data');
-const REPOS_FILE = path.join(DATA_DIR, 'doc-repositories.json');
+// Initialize Prisma client
+const prisma = new PrismaClient();
 
 // Auto-detect source type from URL
 function detectSourceType(url: string): 'git' | 'llmstxt' | 'website' {
@@ -438,33 +438,31 @@ async function scanDirectory(
   }
 }
 
-async function ensureDataDir() {
-  if (!existsSync(DATA_DIR)) {
-    await mkdir(DATA_DIR, { recursive: true });
-  }
-}
-
 async function loadRepositories(): Promise<DocRepository[]> {
   try {
-    await ensureDataDir();
-    if (!existsSync(REPOS_FILE)) {
-      return [];
-    }
-    const data = await readFile(REPOS_FILE, 'utf-8');
-    return JSON.parse(data);
+    const repositories = await prisma.documentationRepository.findMany({
+      orderBy: { createdAt: 'desc' }
+    });
+    
+    // Transform Prisma data to interface format
+    return repositories.map(repo => ({
+      id: repo.id,
+      name: repo.name,
+      sourceType: repo.sourceType as 'git' | 'llmstxt' | 'website',
+      url: repo.url,
+      branch: repo.branch,
+      description: repo.description || undefined,
+      languages: repo.language ? [repo.language] : [],
+      lastIndexed: repo.lastIndexedAt?.toISOString(),
+      status: (repo.lastIndexingStatus?.toLowerCase() || 'pending') as 'pending' | 'indexing' | 'completed' | 'error',
+      documentCount: repo.totalDocuments,
+      lastError: repo.lastIndexingError || undefined,
+      createdAt: repo.createdAt.toISOString(),
+      updatedAt: repo.updatedAt.toISOString()
+    }));
   } catch (error) {
     console.error('Error loading repositories:', error);
     return [];
-  }
-}
-
-async function saveRepositories(repositories: DocRepository[]): Promise<void> {
-  try {
-    await ensureDataDir();
-    await writeFile(REPOS_FILE, JSON.stringify(repositories, null, 2));
-  } catch (error) {
-    console.error('Error saving repositories:', error);
-    throw new Error('Failed to save repositories');
   }
 }
 
@@ -495,10 +493,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: 'URL is required' }, { status: 400 });
     }
 
-    const repositories = await loadRepositories();
-
-    // Check for duplicate URLs (check both gitUrl and url fields)
-    const existingRepo = repositories.find((repo) => repo.gitUrl === url || repo.url === url);
+    // Check for duplicate URLs in database
+    const existingRepo = await prisma.documentationRepository.findFirst({
+      where: { url }
+    });
 
     if (existingRepo) {
       return NextResponse.json(
@@ -522,21 +520,24 @@ export async function POST(request: Request) {
       name = extractNameFromUrl(url);
     }
 
-    const newRepo: DocRepository = {
-      id: uuidv4(),
-      name,
-      sourceType,
-      ...(sourceType === 'git' ? { gitUrl: url, branch: 'main' } : { url }),
-      description: `Documentation from ${name}`, // Will be updated during indexing
-      languages: [], // Will be detected during indexing
-      status: 'indexing', // Start indexing immediately
-      documentCount: 0,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-
-    repositories.push(newRepo);
-    await saveRepositories(repositories);
+    const newRepo = await prisma.documentationRepository.create({
+      data: {
+        id: uuidv4(),
+        name,
+        sourceType,
+        url,
+        branch: sourceType === 'git' ? 'main' : 'main',
+        description: `Documentation from ${name}`, // Will be updated during indexing
+        language: null, // Will be detected during indexing
+        isActive: true,
+        totalDocuments: 0,
+        lastIndexingStatus: 'INDEXING', // Start indexing immediately
+        lastIndexingError: null,
+        lastIndexedAt: null,
+        autoReindexEnabled: true,
+        reindexInterval: 14
+      }
+    });
 
     console.log(
       `${sourceType.toUpperCase()} source ${name} added, starting background indexing...`
@@ -547,10 +548,27 @@ export async function POST(request: Request) {
       console.error(`Background indexing failed for ${name}:`, error);
     });
 
+    // Transform to interface format for response
+    const responseRepo: DocRepository = {
+      id: newRepo.id,
+      name: newRepo.name,
+      sourceType: newRepo.sourceType as 'git' | 'llmstxt' | 'website',
+      url: newRepo.url,
+      branch: newRepo.branch,
+      description: newRepo.description || undefined,
+      languages: [],
+      lastIndexed: undefined,
+      status: 'indexing',
+      documentCount: 0,
+      lastError: undefined,
+      createdAt: newRepo.createdAt.toISOString(),
+      updatedAt: newRepo.updatedAt.toISOString()
+    };
+
     return NextResponse.json({
       success: true,
       message: `${sourceType.toUpperCase()} source ${name} added and indexing started`,
-      repository: newRepo,
+      repository: responseRepo,
     });
   } catch (error) {
     console.error('Error adding repository:', error);
@@ -628,20 +646,19 @@ async function updateRepositoryStatus(
   documentCount?: number,
   error?: string
 ) {
-  const repositories = await loadRepositories();
-  const repoIndex = repositories.findIndex((repo) => repo.id === id);
-
-  if (repoIndex !== -1) {
-    repositories[repoIndex] = {
-      ...repositories[repoIndex],
-      status,
-      documentCount: documentCount ?? repositories[repoIndex].documentCount,
-      lastError: error,
-      lastIndexed:
-        status === 'completed' ? new Date().toISOString() : repositories[repoIndex].lastIndexed,
-      updatedAt: new Date().toISOString(),
-    };
-    await saveRepositories(repositories);
+  try {
+    await prisma.documentationRepository.update({
+      where: { id },
+      data: {
+        lastIndexingStatus: status.toUpperCase(),
+        totalDocuments: documentCount ?? undefined,
+        lastIndexingError: error || null,
+        lastIndexedAt: status === 'completed' ? new Date() : undefined,
+        updatedAt: new Date()
+      }
+    });
+  } catch (error) {
+    console.error(`Failed to update repository status for ${id}:`, error);
   }
 }
 
@@ -650,20 +667,20 @@ async function updateRepositoryWithDetectedInfo(
   repositoryId: string,
   repoInfo: { name: string; description: string; languages: string[]; branch?: string }
 ) {
-  const repositories = await loadRepositories();
-  const repoIndex = repositories.findIndex((repo) => repo.id === repositoryId);
-
-  if (repoIndex !== -1) {
-    repositories[repoIndex] = {
-      ...repositories[repoIndex],
-      name: repoInfo.name,
-      description: repoInfo.description,
-      languages: repoInfo.languages,
-      ...(repoInfo.branch && { branch: repoInfo.branch }),
-      updatedAt: new Date().toISOString(),
-    };
-    await saveRepositories(repositories);
+  try {
+    await prisma.documentationRepository.update({
+      where: { id: repositoryId },
+      data: {
+        name: repoInfo.name,
+        description: repoInfo.description,
+        language: repoInfo.languages.length > 0 ? repoInfo.languages[0] : null,
+        branch: repoInfo.branch || undefined,
+        updatedAt: new Date()
+      }
+    });
     console.log(`Updated repository ${repositoryId} with detected info: ${repoInfo.name}`);
+  } catch (error) {
+    console.error(`Failed to update repository ${repositoryId}:`, error);
   }
 }
 
@@ -671,28 +688,36 @@ async function updateRepositoryWithDetectedInfo(
 export async function PUT(request: Request) {
   try {
     const body = await request.json();
-    const { id, name, gitUrl, branch, description, languages } = body;
+    const { id, name, url, branch, description, languages } = body;
 
-    if (!id || !name || !gitUrl) {
+    if (!id || !name || !url) {
       return NextResponse.json(
-        { success: false, error: 'ID, name, and Git URL are required' },
+        { success: false, error: 'ID, name, and URL are required' },
         { status: 400 }
       );
     }
 
-    const repositories = await loadRepositories();
-    const repoIndex = repositories.findIndex((repo) => repo.id === id);
+    // Check if repository exists
+    const existingRepo = await prisma.documentationRepository.findUnique({
+      where: { id }
+    });
 
-    if (repoIndex === -1) {
+    if (!existingRepo) {
       return NextResponse.json({ success: false, error: 'Repository not found' }, { status: 404 });
     }
 
     // Check for duplicate names or URLs (excluding current repo)
-    const existingRepo = repositories.find(
-      (repo) => repo.id !== id && (repo.name === name || repo.gitUrl === gitUrl)
-    );
+    const duplicateRepo = await prisma.documentationRepository.findFirst({
+      where: {
+        id: { not: id },
+        OR: [
+          { name },
+          { url }
+        ]
+      }
+    });
 
-    if (existingRepo) {
+    if (duplicateRepo) {
       return NextResponse.json(
         { success: false, error: 'Repository with this name or URL already exists' },
         { status: 400 }
@@ -700,22 +725,39 @@ export async function PUT(request: Request) {
     }
 
     // Update repository
-    repositories[repoIndex] = {
-      ...repositories[repoIndex],
-      name,
-      gitUrl,
-      branch: branch || repositories[repoIndex].branch,
-      description: description || repositories[repoIndex].description,
-      languages: Array.isArray(languages) ? languages : repositories[repoIndex].languages,
-      updatedAt: new Date().toISOString(),
-    };
+    const updatedRepo = await prisma.documentationRepository.update({
+      where: { id },
+      data: {
+        name,
+        url,
+        branch: branch || existingRepo.branch,
+        description: description || existingRepo.description,
+        language: Array.isArray(languages) && languages.length > 0 ? languages[0] : existingRepo.language,
+        updatedAt: new Date()
+      }
+    });
 
-    await saveRepositories(repositories);
+    // Transform to interface format
+    const responseRepo: DocRepository = {
+      id: updatedRepo.id,
+      name: updatedRepo.name,
+      sourceType: updatedRepo.sourceType as 'git' | 'llmstxt' | 'website',
+      url: updatedRepo.url,
+      branch: updatedRepo.branch,
+      description: updatedRepo.description || undefined,
+      languages: updatedRepo.language ? [updatedRepo.language] : [],
+      lastIndexed: updatedRepo.lastIndexedAt?.toISOString(),
+      status: (updatedRepo.lastIndexingStatus?.toLowerCase() || 'pending') as 'pending' | 'indexing' | 'completed' | 'error',
+      documentCount: updatedRepo.totalDocuments,
+      lastError: updatedRepo.lastIndexingError || undefined,
+      createdAt: updatedRepo.createdAt.toISOString(),
+      updatedAt: updatedRepo.updatedAt.toISOString()
+    };
 
     return NextResponse.json({
       success: true,
       message: 'Repository updated successfully',
-      repository: repositories[repoIndex],
+      repository: responseRepo,
     });
   } catch (error) {
     console.error('Error updating repository:', error);
@@ -739,15 +781,36 @@ export async function DELETE(request: Request) {
       );
     }
 
-    const repositories = await loadRepositories();
-    const repoIndex = repositories.findIndex((repo) => repo.id === id);
+    // Check if repository exists
+    const existingRepo = await prisma.documentationRepository.findUnique({
+      where: { id }
+    });
 
-    if (repoIndex === -1) {
+    if (!existingRepo) {
       return NextResponse.json({ success: false, error: 'Repository not found' }, { status: 404 });
     }
 
-    const removedRepo = repositories.splice(repoIndex, 1)[0];
-    await saveRepositories(repositories);
+    // Delete repository from database
+    const deletedRepo = await prisma.documentationRepository.delete({
+      where: { id }
+    });
+
+    // Transform to interface format
+    const responseRepo: DocRepository = {
+      id: deletedRepo.id,
+      name: deletedRepo.name,
+      sourceType: deletedRepo.sourceType as 'git' | 'llmstxt' | 'website',
+      url: deletedRepo.url,
+      branch: deletedRepo.branch,
+      description: deletedRepo.description || undefined,
+      languages: deletedRepo.language ? [deletedRepo.language] : [],
+      lastIndexed: deletedRepo.lastIndexedAt?.toISOString(),
+      status: (deletedRepo.lastIndexingStatus?.toLowerCase() || 'pending') as 'pending' | 'indexing' | 'completed' | 'error',
+      documentCount: deletedRepo.totalDocuments,
+      lastError: deletedRepo.lastIndexingError || undefined,
+      createdAt: deletedRepo.createdAt.toISOString(),
+      updatedAt: deletedRepo.updatedAt.toISOString()
+    };
 
     // TODO: Also clean up any indexed documentation from the vector store
     // This would involve calling deleteSource with the repository's documentation
@@ -755,7 +818,7 @@ export async function DELETE(request: Request) {
     return NextResponse.json({
       success: true,
       message: 'Repository deleted successfully',
-      repository: removedRepo,
+      repository: responseRepo,
     });
   } catch (error) {
     console.error('Error deleting repository:', error);

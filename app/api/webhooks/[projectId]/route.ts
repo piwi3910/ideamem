@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
-import { getProject, updateProject } from '@/lib/projects';
-import { startIncrementalIndexing } from '@/lib/indexing';
+import { getProject, updateProject, startIndexingJob } from '@/lib/projects';
 import { headers } from 'next/headers';
+import { QueueManager, JOB_PRIORITIES } from '@/lib/queue';
 
 export async function POST(
   request: Request,
@@ -55,15 +55,27 @@ export async function POST(
     );
     console.log(`Commit: ${webhookInfo.commit} by ${webhookInfo.author} on ${webhookInfo.branch}`);
 
-    // Don't await - let it run in background
-    startIncrementalIndexing(
-      projectId,
-      project.gitRepo,
-      webhookInfo.fullCommit || webhookInfo.commit || 'HEAD',
-      webhookInfo.branch || 'main'
-    ).catch((error) => {
-      console.error(`Webhook incremental indexing failed for project ${projectId}:`, error);
-    });
+    // Create indexing job and add to queue
+    try {
+      const job = await startIndexingJob(projectId, {
+        branch: webhookInfo.branch || 'main',
+        fullReindex: false,
+        triggeredBy: 'WEBHOOK',
+      });
+
+      await QueueManager.addIndexingJob({
+        projectId,
+        jobId: job.id,
+        branch: webhookInfo.branch || 'main',
+        fullReindex: false,
+        triggeredBy: 'WEBHOOK',
+      }, JOB_PRIORITIES.NORMAL);
+      
+      console.log(`Added webhook-triggered indexing job for project ${projectId} to queue`);
+    } catch (error) {
+      console.error(`Failed to queue webhook indexing for project ${projectId}:`, error);
+      // Still return success since webhook was processed, just log the queue error
+    }
 
     return NextResponse.json({
       message: 'Webhook processed successfully, indexing started',

@@ -10,11 +10,16 @@ export async function GET() {
     const [
       projectsCount,
       totalIndexingJobs,
+      totalDocumentationIndexingJobs,
       globalRulesCount,
       globalPreferencesCount,
-      recentActivity,
+      recentProjectJobs,
+      recentDocumentationJobs,
       totalQueries,
       activeProjects,
+      documentationRepositoriesCount,
+      activeDocumentationRepositories,
+      totalDocuments,
     ] = await Promise.all([
       // Count total projects
       prisma.project.count(),
@@ -22,18 +27,32 @@ export async function GET() {
       // Count total indexing jobs
       prisma.indexingJob.count(),
       
+      // Count total documentation indexing jobs
+      prisma.documentationIndexingJob.count(),
+      
       // Count global rules
       prisma.globalRule.count(),
       
       // Count global preferences
       prisma.globalPreference.count(),
       
-      // Get recent activity (last 10 indexing jobs)
+      // Get recent project indexing activity
       prisma.indexingJob.findMany({
-        take: 10,
+        take: 15,
         orderBy: { startedAt: 'desc' },
         include: {
           project: {
+            select: { name: true }
+          }
+        }
+      }),
+      
+      // Get recent documentation indexing activity
+      prisma.documentationIndexingJob.findMany({
+        take: 15,
+        orderBy: { startedAt: 'desc' },
+        include: {
+          repository: {
             select: { name: true }
           }
         }
@@ -52,6 +71,26 @@ export async function GET() {
           lastQueryAt: {
             gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
           }
+        }
+      }),
+      
+      // Count total documentation repositories
+      prisma.documentationRepository.count(),
+      
+      // Count active documentation repositories (indexed in last 30 days)
+      prisma.documentationRepository.count({
+        where: {
+          lastIndexedAt: {
+            gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+          },
+          isActive: true
+        }
+      }),
+      
+      // Sum total documents across all documentation repositories
+      prisma.documentationRepository.aggregate({
+        _sum: {
+          totalDocuments: true
         }
       })
     ]);
@@ -115,6 +154,13 @@ export async function GET() {
       }
     });
 
+    const docIndexingStats = await prisma.documentationIndexingJob.groupBy({
+      by: ['status'],
+      _count: {
+        status: true
+      }
+    });
+
     // Get database size estimation (SQLite specific)
     let dbSize = 0;
     try {
@@ -130,22 +176,46 @@ export async function GET() {
       console.warn('Could not get database size:', error);
     }
 
-    // Format recent activity
-    const formattedRecentActivity = recentActivity.map(job => ({
+    // Format and combine recent activity from both project and documentation indexing
+    const formattedProjectJobs = recentProjectJobs.map(job => ({
       id: job.id,
+      type: 'project' as const,
       projectName: job.project.name,
+      repositoryName: null,
       status: job.status as 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED',
       startedAt: job.startedAt,
       completedAt: job.completedAt,
       progress: job.progress,
-      vectorsAdded: job.vectorsAdded
+      vectorsAdded: job.vectorsAdded,
+      documentsAdded: 0
     }));
+
+    const formattedDocumentationJobs = recentDocumentationJobs.map(job => ({
+      id: job.id,
+      type: 'documentation' as const,
+      projectName: null,
+      repositoryName: job.repository.name,
+      status: job.status as 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED',
+      startedAt: job.startedAt,
+      completedAt: job.completedAt,
+      progress: job.progress,
+      vectorsAdded: 0,
+      documentsAdded: job.documentsAdded
+    }));
+
+    // Combine and sort by most recent
+    const allRecentActivity = [...formattedProjectJobs, ...formattedDocumentationJobs]
+      .sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime())
+      .slice(0, 10); // Take top 10 most recent
 
     return NextResponse.json({
       overview: {
         projectsCount,
         totalQueries: totalQueries._sum.totalQueries || 0,
         activeProjects,
+        documentationRepositoriesCount,
+        activeDocumentationRepositories,
+        totalDocuments: totalDocuments._sum.totalDocuments || 0,
         dbSize,
         vectorMetrics
       },
@@ -158,7 +228,12 @@ export async function GET() {
       },
       indexing: {
         totalJobs: totalIndexingJobs,
+        totalDocumentationJobs: totalDocumentationIndexingJobs,
         statusBreakdown: indexingStats.reduce((acc, stat) => {
+          acc[stat.status] = stat._count.status;
+          return acc;
+        }, {} as Record<string, number>),
+        documentationStatusBreakdown: docIndexingStats.reduce((acc, stat) => {
           acc[stat.status] = stat._count.status;
           return acc;
         }, {} as Record<string, number>)
@@ -166,9 +241,11 @@ export async function GET() {
       content: {
         globalRules: globalRulesCount,
         globalPreferences: globalPreferencesCount,
-        totalVectors: vectorMetrics.totalVectors
+        totalVectors: vectorMetrics.totalVectors,
+        documentationRepositories: documentationRepositoriesCount,
+        totalDocuments: totalDocuments._sum.totalDocuments || 0
       },
-      recentActivity: formattedRecentActivity,
+      recentActivity: allRecentActivity,
       timestamp: new Date().toISOString()
     });
 

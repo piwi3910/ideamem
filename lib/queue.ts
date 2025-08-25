@@ -21,6 +21,7 @@ export interface DocumentationIndexingJobData {
   branch: string;
   sourceType: 'git' | 'llmstxt' | 'website';
   forceReindex?: boolean; // Override git commit checking
+  jobId?: string; // Database job ID for tracking
 }
 
 // Queue names
@@ -89,16 +90,49 @@ export function getQueues(): Record<string, Queue> {
 export class QueueManager {
   private static queues = getQueues();
 
-  // Add indexing job
+  // Add indexing job (with deduplication)
   static async addIndexingJob(data: IndexingJobData, priority: number = JOB_PRIORITIES.NORMAL) {
     const queue = this.queues[QUEUE_NAMES.INDEXING];
+    
+    // Use project ID as job ID to prevent duplicates
+    const jobId = `project-${data.projectId}`;
+    
+    // Check if job already exists
+    try {
+      const existingJob = await queue.getJob(jobId);
+      if (existingJob) {
+        const state = await existingJob.getState();
+        console.log(`Found existing job ${jobId} with state: ${state}`);
+        if (!['completed', 'failed'].includes(state)) {
+          // Check if job is stuck (older than 10 minutes and not active)
+          const jobAge = Date.now() - existingJob.timestamp;
+          const isStuck = jobAge > 10 * 60 * 1000; // 10 minutes
+          
+          if (isStuck && state !== 'active') {
+            console.log(`Job ${jobId} appears stuck (age: ${Math.round(jobAge/60000)}min, state: ${state}), removing and creating new job`);
+            await existingJob.remove();
+          } else {
+            console.log(`Indexing job already exists for project ${data.projectId}, skipping duplicate. Job state: ${state}`);
+            return existingJob;
+          }
+        } else {
+          console.log(`Existing job ${jobId} is ${state}, removing completed/failed job before creating new one`);
+          await existingJob.remove();
+        }
+      } else {
+        console.log(`No existing job found for ${jobId}, will create new job`);
+      }
+    } catch (error) {
+      console.log(`Error checking for existing job ${jobId}:`, error.message);
+      // Job doesn't exist, continue
+    }
     
     return await queue.add(
       'process-indexing',
       data,
       {
         priority,
-        jobId: data.jobId, // Use our job ID as BullMQ job ID
+        jobId,
         delay: 0,
       }
     );
@@ -136,16 +170,30 @@ export class QueueManager {
     }
   }
 
-  // Add documentation indexing job
+  // Add documentation indexing job (with deduplication)
   static async addDocumentationIndexingJob(data: DocumentationIndexingJobData, priority: number = JOB_PRIORITIES.NORMAL) {
     const queue = this.queues[QUEUE_NAMES.DOCUMENTATION_INDEXING];
+    
+    // Use repository ID as job ID to prevent duplicates
+    const jobId = `doc-${data.repositoryId}`;
+    
+    // Check if job already exists
+    try {
+      const existingJob = await queue.getJob(jobId);
+      if (existingJob && !['completed', 'failed'].includes(await existingJob.getState())) {
+        console.log(`Documentation indexing job already exists for repository ${data.repositoryId}, skipping duplicate`);
+        return existingJob;
+      }
+    } catch (error) {
+      // Job doesn't exist, continue
+    }
     
     return await queue.add(
       'process-documentation-indexing',
       data,
       {
         priority,
-        jobId: `doc-${data.repositoryId}-${Date.now()}`, // Unique ID for doc job
+        jobId, // Use consistent ID for deduplication
         delay: 0,
       }
     );
@@ -212,6 +260,94 @@ export class QueueManager {
       console.error('Error canceling job:', error);
       return false;
     }
+  }
+
+  // Cancel existing job for project (if any)
+  static async cancelExistingProjectJob(projectId: string) {
+    const queue = this.queues[QUEUE_NAMES.INDEXING];
+    const jobId = `project-${projectId}`;
+    
+    try {
+      const job = await queue.getJob(jobId);
+      if (job) {
+        const state = await job.getState();
+        if (['waiting', 'active', 'delayed'].includes(state)) {
+          await job.remove();
+          console.log(`Cancelled existing indexing job for project ${projectId}`);
+          return true;
+        }
+      }
+    } catch (error) {
+      console.warn(`Failed to cancel existing job for project ${projectId}:`, error);
+    }
+    return false;
+  }
+
+  // Cancel existing job for documentation repository (if any)
+  static async cancelExistingDocumentationJob(repositoryId: string) {
+    const queue = this.queues[QUEUE_NAMES.DOCUMENTATION_INDEXING];
+    const jobId = `doc-${repositoryId}`;
+    
+    try {
+      const job = await queue.getJob(jobId);
+      if (job) {
+        const state = await job.getState();
+        if (['waiting', 'active', 'delayed'].includes(state)) {
+          await job.remove();
+          console.log(`Cancelled existing documentation indexing job for repository ${repositoryId}`);
+          return true;
+        }
+      }
+    } catch (error) {
+      console.warn(`Failed to cancel existing documentation job for repository ${repositoryId}:`, error);
+    }
+    return false;
+  }
+
+  // Get active jobs for a project
+  static async getActiveProjectJobs(projectId: string) {
+    const queue = this.queues[QUEUE_NAMES.INDEXING];
+    const jobId = `project-${projectId}`;
+    
+    try {
+      const job = await queue.getJob(jobId);
+      if (job) {
+        const state = await job.getState();
+        return {
+          exists: true,
+          state,
+          data: job.data,
+          progress: job.progress,
+        };
+      }
+    } catch (error) {
+      console.warn(`Error getting active job for project ${projectId}:`, error);
+    }
+    
+    return { exists: false };
+  }
+
+  // Get active jobs for a documentation repository
+  static async getActiveDocumentationJobs(repositoryId: string) {
+    const queue = this.queues[QUEUE_NAMES.DOCUMENTATION_INDEXING];
+    const jobId = `doc-${repositoryId}`;
+    
+    try {
+      const job = await queue.getJob(jobId);
+      if (job) {
+        const state = await job.getState();
+        return {
+          exists: true,
+          state,
+          data: job.data,
+          progress: job.progress,
+        };
+      }
+    } catch (error) {
+      console.warn(`Error getting active documentation job for repository ${repositoryId}:`, error);
+    }
+    
+    return { exists: false };
   }
 
   // Get queue statistics

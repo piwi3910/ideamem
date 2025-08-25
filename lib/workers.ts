@@ -9,6 +9,9 @@ import {
   getDocumentationRepository,
 } from './documentation-repositories';
 
+// Track running documentation indexing jobs to prevent duplicates
+const runningDocumentationJobs = new Set<string>();
+
 // Worker configurations
 const WORKER_CONFIG = {
   connection: {
@@ -28,7 +31,7 @@ export function createIndexingWorker(): Worker {
     async (job: Job<IndexingJobData>) => {
       const { projectId, jobId, branch = 'main', fullReindex = false } = job.data;
       
-      console.log(`Processing indexing job ${jobId} for project ${projectId}`);
+      console.log(`🔄 WORKER: Starting to process indexing job ${jobId} for project ${projectId}`);
       
       try {
         // Update job status to running
@@ -239,6 +242,15 @@ export function createDocumentationIndexingWorker(): Worker {
       
       console.log(`Processing documentation indexing job for repository ${repositoryId}`);
       
+      // Check if this repository is already being indexed
+      if (runningDocumentationJobs.has(repositoryId)) {
+        console.log(`Documentation indexing already in progress for repository ${repositoryId}, skipping`);
+        throw new Error(`Documentation indexing already in progress for repository ${repositoryId}`);
+      }
+      
+      // Mark as running
+      runningDocumentationJobs.add(repositoryId);
+      
       const startTime = Date.now();
       let repository;
       
@@ -302,6 +314,10 @@ export function createDocumentationIndexingWorker(): Worker {
         }
         
         throw error;
+      } finally {
+        // Always remove from running jobs set
+        runningDocumentationJobs.delete(repositoryId);
+        console.log(`Removed documentation indexing job for repository ${repositoryId} from running set`);
       }
     },
     {

@@ -6,10 +6,7 @@ export async function POST(_request: Request) {
   try {
     console.log('Queue management request at:', new Date().toISOString());
 
-    // Start workers if not already running
-    startWorkers();
-
-    // Get queue statistics
+    // Get queue statistics (workers should already be started by startup.ts)
     const stats = await QueueManager.getQueueStats();
 
     return NextResponse.json({

@@ -128,6 +128,18 @@ export async function startIncrementalIndexing(
     throw new Error('Indexing already in progress for this project');
   }
 
+  // Check if project has had a successful full index first
+  const project = await getProject(projectId);
+  if (!project) {
+    throw new Error('Project not found');
+  }
+
+  // If no successful full index has been completed, do full indexing instead
+  if (!project.lastIndexedCommit || project.lastIndexedCommit === 'unknown' || project.indexStatus !== 'COMPLETED') {
+    console.log(`Project ${projectId} has no successful full index. Performing full indexing instead of incremental.`);
+    return startCodebaseIndexing(projectId, gitRepo);
+  }
+
   // Create indexing job in database
   const job = await startIndexingJob(projectId, {
     branch: targetBranch,
@@ -151,10 +163,39 @@ export async function startIncrementalIndexing(
     await performIncrementalIndexing(context, gitRepo, targetCommit, targetBranch);
   } catch (error) {
     console.error('Incremental indexing failed:', error);
-    await updateIndexingProgress(context.jobId, {
-      status: 'FAILED',
-      errorMessage: error instanceof Error ? error.message : 'Unknown error',
-    });
+    
+    // Try fallback to full indexing if incremental fails
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    if (errorMessage.includes('Invalid commit reference') || 
+        errorMessage.includes('Invalid fromCommit') ||
+        errorMessage.includes('Failed to get git diff')) {
+      
+      console.log('Falling back to full indexing due to git issues...');
+      
+      try {
+        // Update job to indicate fallback to full reindex
+        await updateIndexingProgress(context.jobId, {
+          progress: 0,
+          status: 'RUNNING',
+          currentFile: 'Falling back to full indexing...',
+        });
+        
+        // Perform full indexing instead
+        await performIndexing(context, gitRepo);
+        
+      } catch (fullIndexError) {
+        console.error('Full indexing fallback also failed:', fullIndexError);
+        await updateIndexingProgress(context.jobId, {
+          status: 'FAILED',
+          errorMessage: `Incremental indexing failed, full indexing fallback also failed: ${fullIndexError instanceof Error ? fullIndexError.message : 'Unknown error'}`,
+        });
+      }
+    } else {
+      await updateIndexingProgress(context.jobId, {
+        status: 'FAILED',
+        errorMessage: errorMessage,
+      });
+    }
   } finally {
     runningJobs.delete(projectId);
     // Cleanup temp directory
@@ -251,6 +292,14 @@ async function performIndexing(context: IndexingContext, gitRepo: string): Promi
     progress: 10,
     currentFile: 'Scanning files...',
   });
+
+  // Verify repository path exists
+  try {
+    const stat = await fs.stat(context.repoPath);
+    console.log(`Repository path exists: ${context.repoPath} (is directory: ${stat.isDirectory()})`);
+  } catch (error) {
+    throw new Error(`Repository path does not exist: ${context.repoPath}`);
+  }
 
   const files = await scanFiles(context.repoPath);
   context.totalFiles = files.length;
@@ -352,25 +401,48 @@ async function scanFiles(repoPath: string): Promise<string[]> {
   const files: string[] = [];
 
   async function scanDirectory(dirPath: string): Promise<void> {
-    const entries = await fs.readdir(dirPath, { withFileTypes: true });
-
-    for (const entry of entries) {
-      const fullPath = path.join(dirPath, entry.name);
-
-      // Skip patterns
-      if (shouldSkip(entry.name, fullPath)) {
-        continue;
+    try {
+      // Check if directory still exists
+      const stat = await fs.stat(dirPath);
+      if (!stat.isDirectory()) {
+        console.warn(`Path is not a directory: ${dirPath}`);
+        return;
       }
+      
+      const entries = await fs.readdir(dirPath, { withFileTypes: true });
 
-      if (entry.isDirectory()) {
-        await scanDirectory(fullPath);
-      } else if (entry.isFile() && shouldIndex(entry.name)) {
-        files.push(fullPath);
+      for (const entry of entries) {
+        const fullPath = path.join(dirPath, entry.name);
+
+        // Skip patterns
+        if (shouldSkip(entry.name, fullPath)) {
+          continue;
+        }
+
+        try {
+          if (entry.isDirectory()) {
+            await scanDirectory(fullPath);
+          } else if (entry.isFile() && shouldIndex(entry.name)) {
+            // Verify file still exists and is readable
+            await fs.access(fullPath, fs.constants.R_OK);
+            files.push(fullPath);
+          }
+        } catch (error) {
+          console.warn(`Skipping inaccessible path: ${fullPath}, error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
       }
+    } catch (error) {
+      console.error(`Error scanning directory ${dirPath}:`, error instanceof Error ? error.message : 'Unknown error');
     }
   }
 
   await scanDirectory(repoPath);
+  
+  console.log(`Scanned ${files.length} files from ${repoPath}`);
+  if (files.length > 0) {
+    console.log(`Sample files: ${files.slice(0, 3).map(f => path.relative(repoPath, f)).join(', ')}`);
+  }
+  
   return files;
 }
 
@@ -408,6 +480,14 @@ async function processFile(
   relativePath: string
 ): Promise<{ vectors_added: number }> {
   try {
+    // Check if file exists before trying to read it
+    try {
+      await fs.access(filePath);
+    } catch (error) {
+      console.warn(`File no longer exists, skipping: ${relativePath}`);
+      return { vectors_added: 0 };
+    }
+    
     const content = await fs.readFile(filePath, 'utf-8');
 
     // Skip very large files (> 1MB)
@@ -673,24 +753,89 @@ async function setupRepositoryForIncremental(
   targetPath: string,
   branch: string
 ): Promise<void> {
-  // Check if repository already exists
+  let repositoryCorrupted = false;
+  
+  // Check if repository already exists and is valid
   try {
     await fs.access(path.join(targetPath, '.git'));
-    // Repository exists, fetch latest changes
-    console.log('Repository exists, fetching latest changes...');
-    await execAsync(`cd "${targetPath}" && git fetch origin`, { timeout: 300000 });
-    await execAsync(`cd "${targetPath}" && git checkout ${branch}`, { timeout: 60000 });
-    await execAsync(`cd "${targetPath}" && git pull origin ${branch}`, { timeout: 300000 });
-  } catch {
-    // Repository doesn't exist, clone it
-    console.log('Repository not found, cloning...');
-    await cloneRepository(gitRepo, targetPath);
-    if (branch !== 'main' && branch !== 'master') {
+    
+    // Verify git repository is not corrupted
+    try {
+      await execAsync(`cd "${targetPath}" && git status`, { timeout: 30000 });
+    } catch (error) {
+      console.warn('Git repository appears corrupted, will re-clone:', error);
+      repositoryCorrupted = true;
+    }
+    
+    if (!repositoryCorrupted) {
+      // Repository exists and is valid, fetch latest changes
+      console.log('Repository exists, fetching latest changes...');
       try {
+        await execAsync(`cd "${targetPath}" && git fetch origin`, { timeout: 300000 });
         await execAsync(`cd "${targetPath}" && git checkout ${branch}`, { timeout: 60000 });
+        await execAsync(`cd "${targetPath}" && git pull origin ${branch}`, { timeout: 300000 });
+        return; // Success, exit early
       } catch (error) {
-        console.warn(`Failed to checkout branch ${branch}, staying on default branch`);
+        console.warn('Failed to update existing repository, will re-clone:', error);
+        repositoryCorrupted = true;
       }
+    }
+  } catch {
+    // Repository doesn't exist, that's fine
+  }
+  
+  // If we reach here, either repository doesn't exist or is corrupted
+  console.log('Repository not found or corrupted, cleaning up and cloning...');
+  
+  // Clean up any existing directory
+  try {
+    await fs.rm(targetPath, { recursive: true, force: true });
+  } catch (error) {
+    console.warn('Failed to cleanup directory:', error);
+  }
+  
+  // Ensure parent directory exists
+  try {
+    await fs.mkdir(path.dirname(targetPath), { recursive: true });
+  } catch (error) {
+    console.warn('Failed to create parent directory:', error);
+  }
+  
+  // Clone repository with retry logic
+  let retries = 3;
+  while (retries > 0) {
+    try {
+      await cloneRepository(gitRepo, targetPath);
+      
+      // Try to checkout the specified branch if not default
+      if (branch !== 'main' && branch !== 'master') {
+        try {
+          await execAsync(`cd "${targetPath}" && git checkout ${branch}`, { timeout: 60000 });
+        } catch (error) {
+          console.warn(`Failed to checkout branch ${branch}, staying on default branch:`, error);
+        }
+      }
+      
+      // Verify the clone was successful
+      await execAsync(`cd "${targetPath}" && git status`, { timeout: 30000 });
+      console.log('Repository cloned and verified successfully');
+      return; // Success
+      
+    } catch (error) {
+      retries--;
+      console.error(`Clone attempt failed (${3 - retries}/3):`, error);
+      
+      // Clean up failed attempt
+      try {
+        await fs.rm(targetPath, { recursive: true, force: true });
+      } catch {}
+      
+      if (retries === 0) {
+        throw new Error(`Failed to clone repository after 3 attempts: ${error}`);
+      }
+      
+      // Wait before retry
+      await new Promise(resolve => setTimeout(resolve, 2000 * (3 - retries)));
     }
   }
 }
@@ -721,8 +866,22 @@ async function getGitDiff(
   toCommit: string
 ): Promise<GitDiffResult> {
   try {
+    // Validate commit hashes exist in the repository
+    if (fromCommit === 'unknown' || fromCommit === '' || !fromCommit) {
+      throw new Error('Invalid fromCommit: cannot perform incremental indexing without a valid previous commit');
+    }
+    
+    // Verify commits exist
+    try {
+      await execAsync(`cd "${repoPath}" && git rev-parse --verify ${fromCommit}^{commit}`, { timeout: 10000 });
+      await execAsync(`cd "${repoPath}" && git rev-parse --verify ${toCommit}^{commit}`, { timeout: 10000 });
+    } catch (error) {
+      throw new Error(`Invalid commit reference - fromCommit: ${fromCommit}, toCommit: ${toCommit}. Error: ${error}`);
+    }
+    
     const { stdout } = await execAsync(
-      `cd "${repoPath}" && git diff --name-status ${fromCommit}..${toCommit}`
+      `cd "${repoPath}" && git diff --name-status ${fromCommit}..${toCommit}`,
+      { timeout: 60000 }
     );
 
     const result: GitDiffResult = {

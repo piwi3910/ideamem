@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getProject, startIndexingJob, cancelIndexingJob } from '@/lib/projects';
-import { startCodebaseIndexing, cancelIndexing } from '@/lib/indexing';
+import { cancelIndexing } from '@/lib/indexing';
+import { QueueManager, JOB_PRIORITIES } from '@/lib/queue';
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -15,14 +16,52 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       return NextResponse.json({ error: 'Indexing already in progress' }, { status: 409 });
     }
 
-    // Start the indexing job tracking
-    await startIndexingJob(id);
-
-    // Start the actual indexing process in the background
-    // Don't await this so the request returns immediately
-    startCodebaseIndexing(id, project.gitRepo).catch((error) => {
-      console.error('Background indexing failed:', error);
+    // Create indexing job in database
+    const job = await startIndexingJob(id, {
+      branch: 'main',
+      fullReindex: true,
+      triggeredBy: 'MANUAL',
     });
+
+    // Add job to BullMQ queue instead of running directly
+    try {
+      console.log(`Attempting to add job to queue for project ${id} with job ID ${job.id}`);
+      
+      const queueResult = await QueueManager.addIndexingJob({
+        projectId: id,
+        jobId: job.id,
+        branch: 'main',
+        fullReindex: true,
+        triggeredBy: 'MANUAL',
+      }, JOB_PRIORITIES.HIGH); // Use HIGH priority for manual reindex
+      
+      console.log(`Queue job addition result:`, {
+        bullmqJobId: queueResult?.id,
+        bullmqJobName: queueResult?.name,
+        bullmqJobData: queueResult?.data
+      });
+      
+      console.log(`Added manual reindex job for project ${id} to queue`);
+      
+      // Verify the job was actually added
+      const queueJob = await QueueManager.getActiveProjectJobs(id);
+      console.log(`Queue job verification for ${id}:`, queueJob);
+      
+      // Also check queue stats after adding
+      const queueStats = await QueueManager.getQueueStats();
+      console.log(`Current queue stats after job addition:`, queueStats.indexing);
+      
+    } catch (queueError) {
+      console.error('Failed to add reindex job to queue:', queueError);
+      console.error('Queue error details:', {
+        message: queueError.message,
+        stack: queueError.stack,
+        name: queueError.name
+      });
+      // Cancel the database job if queue fails
+      await cancelIndexingJob(id);
+      throw queueError;
+    }
 
     return NextResponse.json({
       message: 'Indexing started',

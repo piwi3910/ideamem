@@ -1,24 +1,24 @@
 import { NextResponse } from 'next/server';
-import { readFile, writeFile, readdir, rm, stat } from 'fs/promises';
+import { readdir, readFile, rm, stat } from 'fs/promises';
 import { existsSync } from 'fs';
 import * as path from 'path';
-import { ingest } from '../../../../../lib/memory';
-import { parserFactory } from '../../../../../lib/parsing';
+import { ingest } from '@/lib/memory';
+import { parserFactory } from '@/lib/parsing';
 import simpleGit from 'simple-git';
 import { v4 as uuidv4 } from 'uuid';
 import * as os from 'os';
-import { PrismaClient } from '../../../../../lib/generated/prisma';
-import { shouldUseDynamicRendering, dynamicRenderer } from '../../../../../lib/dynamic-renderer';
-import { ParsedContentCache } from '../../../../../lib/cache';
-import { ContentClassifier } from '../../../../../lib/content-classifier';
-import { HybridSearchEngine } from '../../../../../lib/hybrid-search';
+import { PrismaClient } from '@/lib/generated/prisma';
+import { shouldUseDynamicRendering, dynamicRenderer } from '@/lib/dynamic-renderer';
+import { ParsedContentCache } from '@/lib/cache';
+import { ContentClassifier } from '@/lib/content-classifier';
+import { HybridSearchEngine } from '@/lib/hybrid-search';
+import { QueueManager, JOB_PRIORITIES } from '@/lib/queue';
 
 interface DocRepository {
   id: string;
   name: string;
   sourceType: 'git' | 'llmstxt' | 'website';
-  gitUrl?: string;
-  url?: string;
+  url: string;
   branch?: string;
   description?: string;
   languages: string[];
@@ -30,31 +30,35 @@ interface DocRepository {
   updatedAt: string;
 }
 
-const DATA_DIR = path.join(process.cwd(), 'data');
-const REPOS_FILE = path.join(DATA_DIR, 'doc-repositories.json');
-
 // Initialize Prisma client
 const prisma = new PrismaClient();
 
-async function loadRepositories(): Promise<DocRepository[]> {
+async function getRepository(repositoryId: string): Promise<DocRepository | null> {
   try {
-    if (!existsSync(REPOS_FILE)) {
-      return [];
-    }
-    const data = await readFile(REPOS_FILE, 'utf-8');
-    return JSON.parse(data);
+    const repo = await prisma.documentationRepository.findUnique({
+      where: { id: repositoryId }
+    });
+    
+    if (!repo) return null;
+    
+    return {
+      id: repo.id,
+      name: repo.name,
+      sourceType: repo.sourceType as 'git' | 'llmstxt' | 'website',
+      url: repo.url,
+      branch: repo.branch,
+      description: repo.description || undefined,
+      languages: repo.language ? [repo.language] : [],
+      lastIndexed: repo.lastIndexedAt?.toISOString(),
+      status: (repo.lastIndexingStatus?.toLowerCase() || 'pending') as 'pending' | 'indexing' | 'completed' | 'error',
+      documentCount: repo.totalDocuments,
+      lastError: repo.lastIndexingError || undefined,
+      createdAt: repo.createdAt.toISOString(),
+      updatedAt: repo.updatedAt.toISOString()
+    };
   } catch (error) {
-    console.error('Error loading repositories:', error);
-    return [];
-  }
-}
-
-async function saveRepositories(repositories: DocRepository[]): Promise<void> {
-  try {
-    await writeFile(REPOS_FILE, JSON.stringify(repositories, null, 2));
-  } catch (error) {
-    console.error('Error saving repositories:', error);
-    throw new Error('Failed to save repositories');
+    console.error('Error loading repository:', error);
+    return null;
   }
 }
 
@@ -64,20 +68,19 @@ async function updateRepositoryStatus(
   documentCount?: number,
   error?: string
 ) {
-  const repositories = await loadRepositories();
-  const repoIndex = repositories.findIndex((repo) => repo.id === id);
-
-  if (repoIndex !== -1) {
-    repositories[repoIndex] = {
-      ...repositories[repoIndex],
-      status,
-      documentCount: documentCount ?? repositories[repoIndex].documentCount,
-      lastError: error,
-      lastIndexed:
-        status === 'completed' ? new Date().toISOString() : repositories[repoIndex].lastIndexed,
-      updatedAt: new Date().toISOString(),
-    };
-    await saveRepositories(repositories);
+  try {
+    await prisma.documentationRepository.update({
+      where: { id },
+      data: {
+        lastIndexingStatus: status.toUpperCase(),
+        totalDocuments: documentCount ?? undefined,
+        lastIndexingError: error || null,
+        lastIndexedAt: status === 'completed' ? new Date() : undefined,
+        updatedAt: new Date()
+      }
+    });
+  } catch (error) {
+    console.error(`Failed to update repository status for ${id}:`, error);
   }
 }
 
@@ -256,11 +259,11 @@ async function indexGitRepository(
     // Create temporary directory for cloning
     tempDir = path.join(os.tmpdir(), `ideamem-clone-${uuidv4()}`);
 
-    console.log(`Cloning repository ${repo.gitUrl} to ${tempDir}`);
+    console.log(`Cloning repository ${repo.url} to ${tempDir}`);
 
     // Initialize simple-git and clone the repository
     const git = simpleGit();
-    await git.clone(repo.gitUrl!, tempDir, ['--depth', '1', '--branch', repo.branch || 'main']);
+    await git.clone(repo.url!, tempDir, ['--depth', '1', '--branch', repo.branch || 'main']);
 
     console.log('Repository cloned successfully, discovering documentation files...');
 
@@ -340,7 +343,7 @@ async function indexGitRepository(
   }
 }
 
-// POST - Index a documentation repository
+// POST - Index a documentation repository using queue system
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -353,8 +356,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const repositories = await loadRepositories();
-    const repo = repositories.find((r) => r.id === repositoryId);
+    const repo = await getRepository(repositoryId);
 
     if (!repo) {
       return NextResponse.json({ success: false, error: 'Repository not found' }, { status: 404 });
@@ -363,23 +365,66 @@ export async function POST(request: Request) {
     // Update status to indexing
     await updateRepositoryStatus(repositoryId, 'indexing');
 
-    // Start indexing process (in background)
-    // In a production system, this would be handled by a queue or background job
-    indexDocumentationSource(repo)
-      .then(async (result) => {
-        if (result.success) {
-          await updateRepositoryStatus(repositoryId, 'completed', result.documentCount);
-        } else {
-          await updateRepositoryStatus(repositoryId, 'error', 0, result.error);
+    // Create database record for tracking this indexing job
+    let docIndexingJob;
+    try {
+      docIndexingJob = await prisma.documentationIndexingJob.create({
+        data: {
+          repositoryId,
+          status: 'PENDING',
+          branch: repo.branch || 'main',
+          sourceType: repo.sourceType,
+          forceReindex: false,
+          triggeredBy: 'MANUAL'
         }
-      })
-      .catch(async (error) => {
-        await updateRepositoryStatus(repositoryId, 'error', 0, error.message);
       });
+    } catch (dbError) {
+      console.error('Failed to create documentation indexing job record:', dbError);
+      return NextResponse.json(
+        { success: false, error: 'Failed to create indexing job record' },
+        { status: 500 }
+      );
+    }
+
+    // Add indexing job to queue instead of running directly
+    try {
+      await QueueManager.addDocumentationIndexingJob({
+        repositoryId,
+        repositoryUrl: repo.url,
+        branch: repo.branch || 'main',
+        sourceType: repo.sourceType,
+        forceReindex: false,
+        jobId: docIndexingJob.id // Pass the database job ID to the queue
+      }, JOB_PRIORITIES.NORMAL);
+
+      // Update job status to running
+      await prisma.documentationIndexingJob.update({
+        where: { id: docIndexingJob.id },
+        data: { status: 'RUNNING' }
+      });
+
+      console.log(`Added documentation indexing job for ${repo.name} to queue`);
+    } catch (queueError) {
+      console.error('Failed to add job to queue:', queueError);
+      // Update database record with error
+      await prisma.documentationIndexingJob.update({
+        where: { id: docIndexingJob.id },
+        data: {
+          status: 'FAILED',
+          errorMessage: 'Failed to queue indexing job',
+          completedAt: new Date()
+        }
+      });
+      await updateRepositoryStatus(repositoryId, 'error', 0, 'Failed to queue indexing job');
+      return NextResponse.json(
+        { success: false, error: 'Failed to queue indexing job' },
+        { status: 500 }
+      );
+    }
 
     return NextResponse.json({
       success: true,
-      message: `Started indexing ${repo.name}`,
+      message: `Started indexing ${repo.name} via queue system`,
     });
   } catch (error) {
     console.error('Error starting repository indexing:', error);
