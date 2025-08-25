@@ -27,7 +27,7 @@ export async function GET() {
       success: true,
       rules,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching global rules:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to fetch global rules' },
@@ -72,7 +72,7 @@ export async function POST(request: Request) {
         }
       }
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error adding global rule:', error);
     // Handle unique constraint violation
     if (error.code === 'P2002') {
@@ -119,7 +119,7 @@ export async function PUT(request: Request) {
         }
       }
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error updating global rule:', error);
     if (error.code === 'P2025') {
       return NextResponse.json({ 
@@ -150,7 +150,7 @@ export async function DELETE(request: Request) {
       success: true,
       message: 'Rule deleted successfully',
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error deleting global rule:', error);
     if (error.code === 'P2025') {
       return NextResponse.json({ 

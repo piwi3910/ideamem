@@ -205,45 +205,29 @@ export default function DocsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-6">
-            <div className="flex items-center gap-4">
-              <div className="p-2 bg-indigo-100 rounded-lg">
-                <BookOpenIcon className="h-6 w-6 text-indigo-600" />
-              </div>
-              <div>
-                <Link href="/" className="text-2xl font-bold text-gray-900 hover:text-primary-600">
-                  IdeaMem
-                </Link>
-                <p className="text-gray-600 mt-1">Documentation Repository Management</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <Link href="/rules" className="btn btn-secondary">
-                Rules
-              </Link>
-              <Link href="/preferences" className="btn btn-secondary">
-                Preferences
-              </Link>
-              <Link href="/dashboard" className="btn btn-secondary">
-                Dashboard
-              </Link>
-            </div>
-          </div>
+    <div className="space-y-6">
+      {/* Page Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Documentation</h1>
+          <p className="text-gray-600 mt-1">
+            Manage documentation repositories and sources
+          </p>
         </div>
-      </header>
-
-      {/* Main Content */}
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="space-y-8">
-          {/* Introduction */}
-          <div className="card">
-            <div className="flex items-start gap-4">
-              <div className="p-2 bg-indigo-100 rounded-lg">
-                <GlobeAltIcon className="h-6 w-6 text-indigo-600" />
+        <button
+          onClick={() => setShowAddForm(true)}
+          className="btn btn-primary flex items-center gap-2"
+        >
+          <PlusIcon className="h-4 w-4" />
+          Add Repository
+        </button>
+      </div>
+      
+      {/* Introduction */}
+      <div className="card">
+        <div className="flex items-start gap-4">
+          <div className="p-2 bg-indigo-100 rounded-lg">
+            <GlobeAltIcon className="h-6 w-6 text-indigo-600" />
               </div>
               <div className="flex-1">
                 <h2 className="text-xl font-semibold text-gray-900 mb-2">Documentation Sources</h2>
@@ -268,11 +252,12 @@ export default function DocsPage() {
                     </div>
                   </div>
                 </div>
-              </div>
-            </div>
           </div>
-          {/* Add Repository Button */}
-          <div className="flex justify-between items-center">
+        </div>
+      </div>
+      
+      {/* Add Repository Button */}
+      <div className="flex justify-between items-center">
             <h3 className="text-lg font-semibold text-gray-900">
               Documentation Sources ({repositories.length})
             </h3>
@@ -573,9 +558,7 @@ export default function DocsPage() {
                 </div>
               ))}
             </div>
-          )}
-        </div>
-      </main>
+        )}
     </div>
   );
 }

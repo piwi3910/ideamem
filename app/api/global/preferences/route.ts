@@ -27,7 +27,7 @@ export async function GET() {
       success: true,
       preferences,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching global preferences:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to fetch global preferences' },
@@ -72,7 +72,7 @@ export async function POST(request: Request) {
         }
       }
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error adding global preference:', error);
     // Handle unique constraint violation
     if (error.code === 'P2002') {
@@ -119,7 +119,7 @@ export async function PUT(request: Request) {
         }
       }
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error updating global preference:', error);
     if (error.code === 'P2025') {
       return NextResponse.json({ 
@@ -150,7 +150,7 @@ export async function DELETE(request: Request) {
       success: true,
       message: 'Preference deleted successfully',
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error deleting global preference:', error);
     if (error.code === 'P2025') {
       return NextResponse.json({ 

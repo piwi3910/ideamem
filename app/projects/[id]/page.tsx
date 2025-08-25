@@ -393,34 +393,28 @@ export default function ProjectDetailPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-6">
-            <div className="flex items-center">
-              <Link href="/dashboard" className="mr-4 p-2 text-gray-400 hover:text-gray-600">
-                <ArrowLeftIcon className="h-5 w-5" />
-              </Link>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">{project.name}</h1>
-                <p className="text-gray-600 mt-1">Project Details</p>
-              </div>
-            </div>
-            <button
-              onClick={() => setShowDeleteModal(true)}
-              className="btn bg-red-100 text-red-700 hover:bg-red-200 flex items-center gap-2"
-            >
-              <TrashIcon className="h-4 w-4" />
-              Delete Project
-            </button>
+    <div className="space-y-6">
+      {/* Page Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Link href="/dashboard" className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100">
+            <ArrowLeftIcon className="h-5 w-5" />
+          </Link>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">{project.name}</h1>
+            <p className="text-gray-600 mt-1">Project Details and Management</p>
           </div>
         </div>
-      </header>
-
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <button
+          onClick={() => setShowDeleteModal(true)}
+          className="btn bg-red-100 text-red-700 hover:bg-red-200 flex items-center gap-2"
+        >
+          <TrashIcon className="h-4 w-4" />
+          Delete Project
+        </button>
+      </div>
+      
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Project Information */}
           <div className="lg:col-span-2 space-y-6">
             {/* Basic Info Card */}
@@ -858,7 +852,6 @@ export default function ProjectDetailPage() {
             </div>
           </div>
         </div>
-      </main>
 
       {/* Token Modal */}
       <Dialog open={showTokenModal} onClose={() => setShowTokenModal(false)}>

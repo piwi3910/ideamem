@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { ingest, retrieve, deleteSource } from '@/lib/memory';
 import { trackQuery } from '@/lib/projects';
-import { validateBearerToken } from '@/app/api/auth/[...nextauth]/route';
+import { validateBearerToken } from '@/lib/auth';
 import {
   indexSingleFile,
   reindexSingleFile,
@@ -12,7 +12,6 @@ import { deleteAllProjectVectors } from '@/lib/memory';
 import { SearchResultsCache } from '@/lib/cache';
 import { HybridSearchEngine } from '@/lib/hybrid-search';
 import { QueryEnhancer } from '@/lib/query-enhancement';
-import { RelationshipAnalyzer } from '@/lib/relationship-analyzer';
 
 // Define ToolSchema objects for our custom methods
 const INGEST_TOOL_SCHEMA = {
@@ -1280,59 +1279,6 @@ export async function POST(request: Request) {
               };
               break;
 
-            case 'docs.relationship_graph':
-              const graphOptions = toolArgs?.options || {};
-              const documentGraph = await RelationshipAnalyzer.buildDocumentationGraph(
-                toolArgs?.project_id,
-                {
-                  includeWeakRelationships: graphOptions.includeWeakRelationships || false,
-                  minStrength: graphOptions.minStrength || 0.3,
-                  maxNodes: graphOptions.maxNodes || 200,
-                }
-              );
-
-              result = {
-                graph: documentGraph,
-                summary: {
-                  total_nodes: documentGraph.nodes.length,
-                  total_relationships: documentGraph.relationships.length,
-                  clusters: documentGraph.clusters.length,
-                  density: documentGraph.metrics.density,
-                  top_connected: documentGraph.metrics.topConnectedNodes.slice(0, 5),
-                },
-              };
-              break;
-
-            case 'docs.find_related':
-              if (!toolArgs?.document_id)
-                throw new Error('Missing document_id for docs.find_related');
-
-              const relatedDocs = await RelationshipAnalyzer.getRelatedDocuments(
-                toolArgs.document_id,
-                toolArgs.limit || 10,
-                toolArgs.min_strength || 0.3
-              );
-
-              result = {
-                document_id: toolArgs.document_id,
-                related_count: relatedDocs.length,
-                related_documents: relatedDocs.map(({ document, relationship }) => ({
-                  id: document.id,
-                  title: document.title,
-                  url: document.url,
-                  content_type: document.contentType,
-                  language: document.language,
-                  complexity: document.complexity,
-                  popularity: document.popularity,
-                  relationship: {
-                    type: relationship.relationshipType,
-                    strength: relationship.strength,
-                    bidirectional: relationship.bidirectional,
-                    context: relationship.context,
-                  },
-                })),
-              };
-              break;
 
             case 'docs.faceted_search':
               if (!toolArgs?.query) throw new Error('Missing query for docs.faceted_search');

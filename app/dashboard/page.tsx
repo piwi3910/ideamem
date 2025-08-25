@@ -374,109 +374,84 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-6">
-            <div>
-              <Link href="/" className="text-2xl font-bold text-gray-900 hover:text-primary-600">
-                IdeaMem
-              </Link>
-              <p className="text-gray-600 mt-1">Project Management Dashboard</p>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="hidden md:flex items-center gap-2">
-                <Link href="/rules" className="btn btn-secondary text-sm">
-                  Rules
-                </Link>
-                <Link href="/preferences" className="btn btn-secondary text-sm">
-                  Preferences
-                </Link>
-                <Link href="/docs" className="btn btn-secondary text-sm">
-                  Docs
-                </Link>
-                <Link href="/admin" className="btn btn-secondary text-sm">
-                  Admin
-                </Link>
-              </div>
-              <button
-                onClick={() => setShowSearch(!showSearch)}
-                className={twMerge(
-                  'btn flex items-center gap-2',
-                  showSearch ? 'btn-primary' : 'btn-secondary'
-                )}
-              >
-                <MagnifyingGlassIcon className="h-5 w-5" />
-                Search
-              </button>
-              <button
-                onClick={() => setShowCreateModal(true)}
-                className="btn btn-primary flex items-center gap-2"
-              >
-                <PlusIcon className="h-5 w-5" />
-                New Project
-              </button>
-            </div>
-          </div>
-
-          {/* Search Bar */}
-          {showSearch && (
-            <div className="pb-6">
-              <div className="max-w-2xl mx-auto">
-                <SearchAutoComplete
-                  value={searchQuery}
-                  onChange={setSearchQuery}
-                  onSubmit={handleSearchSubmit}
-                  onSuggestionSelect={handleSuggestionSelect}
-                  placeholder="Search across all your projects..."
-                  searchHistory={searchHistory}
-                  popularTerms={[
-                    { term: 'function', count: 45 },
-                    { term: 'component', count: 32 },
-                    { term: 'interface', count: 28 },
-                    { term: 'class', count: 24 },
-                  ]}
-                  theme="light"
-                  className="mb-4"
-                />
-
-                {/* Quick filters */}
-                <div className="flex items-center gap-2 text-sm">
-                  <span className="text-gray-500">Quick filters:</span>
-                  <button
-                    onClick={() => handleSearchSubmit('type:code')}
-                    className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs hover:bg-blue-200"
-                  >
-                    Code
-                  </button>
-                  <button
-                    onClick={() => handleSearchSubmit('type:documentation')}
-                    className="px-2 py-1 bg-green-100 text-green-800 rounded text-xs hover:bg-green-200"
-                  >
-                    Docs
-                  </button>
-                  <button
-                    onClick={() => handleSearchSubmit('lang:typescript')}
-                    className="px-2 py-1 bg-purple-100 text-purple-800 rounded text-xs hover:bg-purple-200"
-                  >
-                    TypeScript
-                  </button>
-                  <button
-                    onClick={() => handleSearchSubmit('lang:javascript')}
-                    className="px-2 py-1 bg-yellow-100 text-yellow-800 rounded text-xs hover:bg-yellow-200"
-                  >
-                    JavaScript
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
+    <div className="space-y-6">
+      {/* Page Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Projects</h1>
+          <p className="text-gray-600 mt-1">Manage your repositories and indexing</p>
         </div>
-      </header>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setShowSearch(!showSearch)}
+            className={twMerge(
+              'btn flex items-center gap-2',
+              showSearch ? 'btn-primary' : 'btn-secondary'
+            )}
+          >
+            <MagnifyingGlassIcon className="h-5 w-5" />
+            Search
+          </button>
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="btn btn-primary flex items-center gap-2"
+          >
+            <PlusIcon className="h-5 w-5" />
+            New Project
+          </button>
+        </div>
+      </div>
 
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      {/* Search Bar */}
+      {showSearch && (
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <SearchAutoComplete
+            value={searchQuery}
+            onChange={setSearchQuery}
+            onSubmit={handleSearchSubmit}
+            onSuggestionSelect={handleSuggestionSelect}
+            placeholder="Search across all your projects..."
+            searchHistory={searchHistory}
+            popularTerms={[
+              { term: 'function', count: 45 },
+              { term: 'component', count: 32 },
+              { term: 'interface', count: 28 },
+              { term: 'class', count: 24 },
+            ]}
+            theme="light"
+            className="mb-4"
+          />
+
+          {/* Quick filters */}
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-gray-500">Quick filters:</span>
+            <button
+              onClick={() => handleSearchSubmit('type:code')}
+              className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs hover:bg-blue-200"
+            >
+              Code
+            </button>
+            <button
+              onClick={() => handleSearchSubmit('type:documentation')}
+              className="px-2 py-1 bg-green-100 text-green-800 rounded text-xs hover:bg-green-200"
+            >
+              Docs
+            </button>
+            <button
+              onClick={() => handleSearchSubmit('lang:typescript')}
+              className="px-2 py-1 bg-purple-100 text-purple-800 rounded text-xs hover:bg-purple-200"
+            >
+              TypeScript
+            </button>
+            <button
+              onClick={() => handleSearchSubmit('lang:javascript')}
+              className="px-2 py-1 bg-yellow-100 text-yellow-800 rounded text-xs hover:bg-yellow-200"
+            >
+              JavaScript
+            </button>
+          </div>
+        </div>
+      )}
         {/* Search Results */}
         {showSearch && searchQuery && (
           <div className="mb-8">
@@ -725,7 +700,6 @@ export default function DashboardPage() {
             })}
           </div>
         )}
-      </main>
 
       {/* Create Project Modal */}
       <Dialog open={showCreateModal} onClose={() => setShowCreateModal(false)}>

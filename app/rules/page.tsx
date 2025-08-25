@@ -168,75 +168,55 @@ export default function RulesPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-6">
-            <div className="flex items-center gap-4">
-              <div className="p-2 bg-blue-100 rounded-lg">
-                <ShieldCheckIcon className="h-6 w-6 text-blue-600" />
-              </div>
-              <div>
-                <Link href="/" className="text-2xl font-bold text-gray-900 hover:text-primary-600">
-                  IdeaMem
-                </Link>
-                <p className="text-gray-600 mt-1">Global Rules Management</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <Link href="/preferences" className="btn btn-secondary">
-                User Preferences
-              </Link>
-              <Link href="/docs" className="btn btn-secondary">
-                Documentation
-              </Link>
-              <Link href="/dashboard" className="btn btn-secondary">
-                Dashboard
-              </Link>
+    <div className="space-y-6">
+      {/* Page Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Global Rules</h1>
+          <p className="text-gray-600 mt-1">
+            Manage universal coding standards and architectural constraints
+          </p>
+        </div>
+        <button
+          onClick={() => setShowAddForm(true)}
+          className="btn btn-primary flex items-center gap-2"
+        >
+          <PlusIcon className="h-4 w-4" />
+          Add Rule
+        </button>
+      </div>
+      
+      {/* Introduction */}
+      <div className="card">
+        <div className="flex items-start gap-4">
+          <div className="p-2 bg-blue-100 rounded-lg">
+            <GlobeAltIcon className="h-6 w-6 text-blue-600" />
+          </div>
+          <div className="flex-1">
+            <h2 className="text-xl font-semibold text-gray-900 mb-2">Global Coding Rules</h2>
+            <p className="text-gray-600 mb-4">
+              Manage universal coding standards, style guides, and architectural constraints
+              that apply across all projects. These rules are used by the MCP validation tools
+              to ensure code consistency and prevent common mistakes.
+            </p>
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+              <p className="text-sm text-yellow-800">
+                <strong>Priority:</strong> Project-specific rules always override global rules.
+                Global rules serve as fallbacks when no project-specific rules exist.
+              </p>
             </div>
           </div>
         </div>
-      </header>
+      </div>
 
-      {/* Main Content */}
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="space-y-8">
-          {/* Introduction */}
-          <div className="card">
-            <div className="flex items-start gap-4">
-              <div className="p-2 bg-blue-100 rounded-lg">
-                <GlobeAltIcon className="h-6 w-6 text-blue-600" />
-              </div>
-              <div className="flex-1">
-                <h2 className="text-xl font-semibold text-gray-900 mb-2">Global Coding Rules</h2>
-                <p className="text-gray-600 mb-4">
-                  Manage universal coding standards, style guides, and architectural constraints
-                  that apply across all projects. These rules are used by the MCP validation tools
-                  to ensure code consistency and prevent common mistakes.
-                </p>
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                  <p className="text-sm text-yellow-800">
-                    <strong>Priority:</strong> Project-specific rules always override global rules.
-                    Global rules serve as fallbacks when no project-specific rules exist.
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
+      {/* Rules List Header */}
+      <div className="flex justify-between items-center">
+        <h3 className="text-lg font-semibold text-gray-900">Current Rules ({rules.length})</h3>
+      </div>
 
-          {/* Add Rule Button */}
-          <div className="flex justify-between items-center">
-            <h3 className="text-lg font-semibold text-gray-900">Current Rules ({rules.length})</h3>
-            <button onClick={() => setShowAddForm(!showAddForm)} className="btn btn-primary">
-              <PlusIcon className="h-4 w-4 mr-2" />
-              Add New Rule
-            </button>
-          </div>
-
-          {/* Add Rule Form */}
-          {showAddForm && (
-            <div className="card">
+      {/* Add Rule Form */}
+      {showAddForm && (
+        <div className="card">
               <h4 className="text-lg font-medium text-gray-900 mb-4">Add New Rule</h4>
               <div className="space-y-4">
                 <div>
@@ -406,8 +386,6 @@ export default function RulesPage() {
               ))}
             </div>
           )}
-        </div>
-      </main>
     </div>
   );
 }

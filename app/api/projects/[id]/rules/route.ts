@@ -30,7 +30,7 @@ export async function GET(
     }));
 
     return NextResponse.json({ rules });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching project rules:', error);
     return NextResponse.json(
       { error: 'Failed to fetch project rules' },
@@ -78,7 +78,7 @@ export async function POST(
         }
       }
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error adding project rule:', error);
     // Handle unique constraint violation
     if (error.code === 'P2002') {
@@ -134,7 +134,7 @@ export async function PUT(
         }
       }
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error updating project rule:', error);
     if (error.code === 'P2025') {
       return NextResponse.json({ 
@@ -178,7 +178,7 @@ export async function DELETE(
       success: true, 
       message: 'Rule deleted successfully' 
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error deleting project rule:', error);
     if (error.code === 'P2025') {
       return NextResponse.json({ 

@@ -30,7 +30,7 @@ export async function GET(
     }));
 
     return NextResponse.json({ preferences });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching project preferences:', error);
     return NextResponse.json(
       { error: 'Failed to fetch project preferences' },
@@ -78,7 +78,7 @@ export async function POST(
         }
       }
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error adding project preference:', error);
     // Handle unique constraint violation
     if (error.code === 'P2002') {
@@ -134,7 +134,7 @@ export async function PUT(
         }
       }
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error updating project preference:', error);
     if (error.code === 'P2025') {
       return NextResponse.json({ 
@@ -178,7 +178,7 @@ export async function DELETE(
       success: true, 
       message: 'Preference deleted successfully' 
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error deleting project preference:', error);
     if (error.code === 'P2025') {
       return NextResponse.json({ 

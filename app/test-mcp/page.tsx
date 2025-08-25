@@ -98,32 +98,18 @@ export default function McpTestPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-6">
-            <div>
-              <Link href="/" className="text-2xl font-bold text-gray-900 hover:text-primary-600">
-                IdeaMem
-              </Link>
-              <p className="text-gray-600 mt-1">MCP Protocol Testing Interface</p>
-            </div>
-            <div className="flex gap-3">
-              <Link href="/admin" className="btn btn-secondary">
-                Configuration
-              </Link>
-              <Link href="/dashboard" className="btn btn-secondary">
-                Dashboard
-              </Link>
-            </div>
-          </div>
+    <div className="space-y-6">
+      {/* Page Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">MCP Protocol Testing</h1>
+          <p className="text-gray-600 mt-1">
+            Test and debug Model Context Protocol operations
+          </p>
         </div>
-      </header>
-
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      </div>
+      
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Left Panel - Controls */}
           <div className="space-y-6">
             {/* Protocol Operations */}
@@ -330,7 +316,6 @@ export default function McpTestPage() {
             </div>
           </div>
         </div>
-      </main>
     </div>
   );
 }
