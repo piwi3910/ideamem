@@ -7,7 +7,6 @@ import {
   HomeIcon,
   FolderIcon,
   ShieldCheckIcon,
-  CogIcon,
   DocumentTextIcon,
   ServerIcon,
   ChevronLeftIcon,
@@ -27,8 +26,7 @@ interface SidebarProps {
 const navigationItems = [
   { name: 'Dashboard', href: '/', icon: HomeIcon },
   { name: 'Projects', href: '/projects', icon: FolderIcon },
-  { name: 'Rules', href: '/rules', icon: ShieldCheckIcon },
-  { name: 'Preferences', href: '/preferences', icon: CogIcon },
+  { name: 'Constraints', href: '/constraints', icon: ShieldCheckIcon },
   { name: 'Documentation', href: '/docs', icon: DocumentTextIcon },
   { name: 'Admin', href: '/admin', icon: ServerIcon },
 ];

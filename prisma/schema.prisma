@@ -73,7 +73,6 @@ model Project {
   
   // Relations
   indexingJobs                 IndexingJob[]
-  rules                        ProjectRule[]
   preferences                  ProjectPreference[]
   
   @@map("projects")
@@ -390,49 +389,25 @@ model SavedSearch {
   @@map("saved_searches")
 }
 
-// Global rules and preferences (replaces vector storage for rules/preferences)
-model GlobalRule {
-  id        String   @id @default(uuid())
-  source    String   @unique // e.g., "typescript-standards", "coding-guidelines"
-  content   String   // Markdown content
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@map("global_rules")
-}
-
+// Global preferences (unified for all categories: rule, tooling, workflow, formatting)
 model GlobalPreference {
   id        String   @id @default(uuid())
-  source    String   @unique // e.g., "editor-settings", "team-preferences"
+  source    String   @unique // e.g., "typescript-standards", "editor-settings", "team-workflow"
   content   String   // Markdown content
+  category  String   @default("rule") // "rule", "tooling", "workflow", "formatting"
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@map("global_preferences")
 }
 
-// Project-specific rules and preferences (override global ones)
-model ProjectRule {
-  id        String   @id @default(uuid())
-  projectId String
-  source    String   // e.g., "typescript-standards", "coding-guidelines"
-  content   String   // Markdown content
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-
-  // Ensure unique source per project
-  @@unique([projectId, source])
-  @@map("project_rules")
-}
-
+// Project-specific preferences (unified for all categories: rule, tooling, workflow, formatting)
 model ProjectPreference {
   id        String   @id @default(uuid())
   projectId String
-  source    String   // e.g., "editor-settings", "team-preferences"
+  source    String   // e.g., "typescript-standards", "editor-settings", "team-workflow"
   content   String   // Markdown content
+  category  String   @default("rule") // "rule", "tooling", "workflow", "formatting"
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

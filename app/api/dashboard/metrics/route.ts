@@ -9,7 +9,6 @@ export async function GET() {
       projectsCount,
       totalIndexingJobs,
       totalDocumentationIndexingJobs,
-      globalRulesCount,
       globalPreferencesCount,
       recentProjectJobs,
       recentDocumentationJobs,
@@ -28,10 +27,7 @@ export async function GET() {
       // Count total documentation indexing jobs
       prisma.documentationIndexingJob.count(),
       
-      // Count global rules
-      prisma.globalRule.count(),
-      
-      // Count global preferences
+      // Count global preferences (unified constraints)
       prisma.globalPreference.count(),
       
       // Get recent project indexing activity
@@ -237,7 +233,6 @@ export async function GET() {
         }, {} as Record<string, number>)
       },
       content: {
-        globalRules: globalRulesCount,
         globalPreferences: globalPreferencesCount,
         totalVectors: vectorMetrics.totalVectors,
         documentationRepositories: documentationRepositoriesCount,

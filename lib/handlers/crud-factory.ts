@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/database';
 import { createSuccessResponse, createNotFoundError, createErrorResponse, HTTP_STATUS } from '@/lib/utils/responses';
-import { PrismaErrorHandlers, createPreferenceErrorMessages, createRuleErrorMessages } from '@/lib/utils/prisma-errors';
+import { PrismaErrorHandlers, createPreferenceErrorMessages } from '@/lib/utils/prisma-errors';
 
 export type CrudItem = {
   id: string;
@@ -18,6 +18,7 @@ export type CrudItemWithScope = CrudItem & {
 export type CrudItemInput = {
   source: string;
   content: string;
+  category?: string;
 };
 
 export type CrudItemUpdate = Partial<CrudItemInput>;
@@ -183,7 +184,8 @@ export class CrudHandlerFactory<T extends CrudItem = CrudItem> {
       payload: {
         source: item.source,
         content: item.content,
-        type: this.config.resourceName.includes('preference') ? 'user_preference' : 'rule',
+        category: item.category,
+        type: 'user_preference', // All constraints are now unified as preferences
         language: 'markdown',
         scope: this.config.scope,
         project_id: this.config.scope === 'project' ? projectId || item.projectId : 'global',
@@ -195,14 +197,14 @@ export class CrudHandlerFactory<T extends CrudItem = CrudItem> {
    * Get collection name for responses
    */
   private getCollectionName(): string {
-    return this.config.resourceName.includes('preference') ? 'preferences' : 'rules';
+    return 'constraints'; // Unified naming for all constraint types
   }
 
   /**
    * Get singular name for responses
    */
   private getSingularName(): string {
-    return this.config.resourceName.includes('preference') ? 'preference' : 'rule';
+    return 'constraint'; // Unified naming for all constraint types
   }
 }
 
@@ -220,9 +222,11 @@ export const CrudHandlers = {
     createData: (input: CrudItemInput) => ({
       source: input.source,
       content: input.content,
+      category: input.category || 'tooling',
     }),
     updateData: (input: CrudItemUpdate) => ({
       ...(input.content && { content: input.content }),
+      ...(input.category && { category: input.category }),
     }),
     customErrorMessages: createPreferenceErrorMessages('global'),
   }),
@@ -238,47 +242,15 @@ export const CrudHandlers = {
       projectId: projectId!,
       source: input.source,
       content: input.content,
+      category: input.category || 'tooling',
     }),
     updateData: (input: CrudItemUpdate) => ({
       ...(input.content && { content: input.content }),
+      ...(input.category && { category: input.category }),
     }),
     customErrorMessages: createPreferenceErrorMessages('project'),
   }),
 
-  /**
-   * Global rules CRUD handler
-   */
-  globalRules: new CrudHandlerFactory({
-    scope: 'global',
-    resourceName: 'global rule',
-    model: prisma.globalRule,
-    createData: (input: CrudItemInput) => ({
-      source: input.source,
-      content: input.content,
-    }),
-    updateData: (input: CrudItemUpdate) => ({
-      ...(input.content && { content: input.content }),
-    }),
-    customErrorMessages: createRuleErrorMessages('global'),
-  }),
-
-  /**
-   * Project rules CRUD handler
-   */
-  projectRules: new CrudHandlerFactory({
-    scope: 'project',
-    resourceName: 'project rule',
-    model: prisma.projectRule,
-    createData: (input: CrudItemInput, projectId?: string) => ({
-      projectId: projectId!,
-      source: input.source,
-      content: input.content,
-    }),
-    updateData: (input: CrudItemUpdate) => ({
-      ...(input.content && { content: input.content }),
-    }),
-    customErrorMessages: createRuleErrorMessages('project'),
-  }),
 };
 
 /**
@@ -349,6 +321,4 @@ export function createCrudRoutes<T extends CrudItem>(handler: CrudHandlerFactory
 export const PreConfiguredRoutes = {
   globalPreferences: createCrudRoutes(CrudHandlers.globalPreferences),
   projectPreferences: createCrudRoutes(CrudHandlers.projectPreferences),
-  globalRules: createCrudRoutes(CrudHandlers.globalRules),
-  projectRules: createCrudRoutes(CrudHandlers.projectRules),
 };

@@ -194,15 +194,15 @@ const CHECK_CONSTRAINTS_TOOL_SCHEMA = {
 const SET_CONSTRAINTS_TOOL_SCHEMA = {
   name: 'codebase.set_constraints',
   description:
-    '📝 AI ASSISTANT: Store coding rules and preferences in database. WHEN TO USE: When establishing coding standards, style guides, architecture constraints, security policies, or team preferences that future coding tasks must follow. Stored in database (not vectors). Use this, not codebase.store, for constraints.',
+    '📝 AI ASSISTANT: Store coding preferences in database with categorization. WHEN TO USE: When establishing coding standards, style guides, architecture constraints, security policies, or team preferences that future coding tasks must follow. All stored as preferences with categories (rule, tooling, workflow, formatting). Stored in database (not vectors).',
   inputSchema: {
     type: 'object',
     properties: {
-      type: {
+      category: {
         type: 'string',
-        enum: ['rule', 'user_preference'],
+        enum: ['rule', 'tooling', 'workflow', 'formatting'],
         description:
-          "Type of constraint: 'rule' for coding standards, style guides, architecture constraints, security policies; 'user_preference' for IDE settings, team preferences, workflow choices.",
+          "Category of constraint: 'rule' for coding rules and standards, 'tooling' for IDE and development tools, 'workflow' for development processes, 'formatting' for code style and formatting rules.",
       },
       source: {
         type: 'string',
@@ -212,7 +212,7 @@ const SET_CONSTRAINTS_TOOL_SCHEMA = {
       content: {
         type: 'string',
         description:
-          'The rule or preference content in markdown format. Should be clear, specific, and actionable. Examples: coding style rules, architecture patterns, security requirements.',
+          'The constraint content in markdown format. Should be clear, specific, and actionable. Examples: coding style rules, architecture patterns, security requirements.',
       },
       scope: {
         type: 'string',
@@ -222,7 +222,7 @@ const SET_CONSTRAINTS_TOOL_SCHEMA = {
         default: 'global',
       },
     },
-    required: ['type', 'source', 'content'],
+    required: ['category', 'source', 'content'],
   },
 };
 
@@ -882,52 +882,58 @@ export async function POST(request: Request) {
               const { projectId: constraintProjectId } = requireProjectAuth();
               
               try {
-                // Get project-specific rules/preferences from database
-                const projectRulesResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/projects/${constraintProjectId}/rules`);
-                const projectPreferencesResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/projects/${constraintProjectId}/preferences`);
+                // Get project-specific constraints from unified API
+                const projectConstraintsResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/projects/${constraintProjectId}/constraints`);
                 
-                const projectRules = projectRulesResponse.ok ? (await projectRulesResponse.json()).data || [] : [];
-                const projectPreferences = projectPreferencesResponse.ok ? (await projectPreferencesResponse.json()).data || [] : [];
+                const projectConstraintsData = projectConstraintsResponse.ok ? await projectConstraintsResponse.json() : {};
+                const projectConstraints = projectConstraintsData.data?.constraints || [];
 
-                // Get global rules/preferences as fallback
-                const globalRulesResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/global/rules`);
-                const globalPreferencesResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/global/preferences`);
+                // Get global constraints as fallback
+                const globalConstraintsResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/global/constraints`);
                 
-                const globalRules = globalRulesResponse.ok ? (await globalRulesResponse.json()).data || [] : [];
-                const globalPreferences = globalPreferencesResponse.ok ? (await globalPreferencesResponse.json()).data || [] : [];
+                const globalConstraintsData = globalConstraintsResponse.ok ? await globalConstraintsResponse.json() : {};
+                const globalConstraints = globalConstraintsData.data?.constraints || [];
 
-                // Merge with project taking precedence (project rules come first)
-                const allRules = [...projectRules, ...globalRules];
-                const allPreferences = [...projectPreferences, ...globalPreferences];
+                // Merge with project taking precedence (project constraints come first)
+                const allConstraints = [...projectConstraints, ...globalConstraints];
+
+                // Organize constraints by category
+                const categorizedConstraints = {
+                  rule: allConstraints.filter(c => c.payload.category === 'rule'),
+                  tooling: allConstraints.filter(c => c.payload.category === 'tooling'),  
+                  workflow: allConstraints.filter(c => c.payload.category === 'workflow'),
+                  formatting: allConstraints.filter(c => c.payload.category === 'formatting'),
+                };
 
                 result = {
-                  rules: allRules.map(r => ({
-                    source: r.source,
-                    content: r.content,
-                    scope: r.projectId ? 'project' : 'global',
-                    id: r.id
+                  constraints: allConstraints.map(c => ({
+                    source: c.payload.source,
+                    content: c.payload.content,
+                    category: c.payload.category,
+                    scope: c.payload.scope,
+                    id: c.id
                   })),
-                  preferences: allPreferences.map(p => ({
-                    source: p.source,
-                    content: p.content,
-                    scope: p.projectId ? 'project' : 'global',
-                    id: p.id
-                  })),
-                  priority_info: {
-                    project_rules_count: projectRules.length,
-                    global_rules_count: globalRules.length,
-                    project_preferences_count: projectPreferences.length,
-                    global_preferences_count: globalPreferences.length,
+                  categories: categorizedConstraints,
+                  category_counts: {
+                    rule: categorizedConstraints.rule.length,
+                    tooling: categorizedConstraints.tooling.length,
+                    workflow: categorizedConstraints.workflow.length,
+                    formatting: categorizedConstraints.formatting.length,
                   },
-                  summary: `Found ${allRules.length} rules (${projectRules.length} project-specific, ${globalRules.length} global) and ${allPreferences.length} preferences (${projectPreferences.length} project-specific, ${globalPreferences.length} global). PROJECT RULES OVERRIDE GLOBAL RULES.`,
+                  priority_info: {
+                    project_constraints_count: projectConstraints.length,
+                    global_constraints_count: globalConstraints.length,
+                  },
+                  summary: `Found ${allConstraints.length} constraints (${projectConstraints.length} project-specific, ${globalConstraints.length} global). PROJECT CONSTRAINTS OVERRIDE GLOBAL CONSTRAINTS.`,
+                  category_breakdown: `Rule: ${categorizedConstraints.rule.length}, Tooling: ${categorizedConstraints.tooling.length}, Workflow: ${categorizedConstraints.workflow.length}, Formatting: ${categorizedConstraints.formatting.length}`,
                   workflow_reminder:
-                    '🚨 CRITICAL: Project-specific constraints take precedence over global ones. Review project rules first, then global rules as fallback.',
+                    '🚨 CRITICAL: Project-specific constraints take precedence over global ones. All constraints are organized by category (rule, tooling, workflow, formatting).',
                 };
               } catch (error) {
                 result = {
-                  rules: [],
-                  preferences: [],
-                  error: `Failed to fetch rules and preferences from database: ${error instanceof Error ? error.message : 'Unknown error'}`,
+                  constraints: [],
+                  categories: { rule: [], tooling: [], workflow: [], formatting: [] },
+                  error: `Failed to fetch constraints from database: ${error instanceof Error ? error.message : 'Unknown error'}`,
                   summary: 'Failed to load constraints from database. Using empty constraints.',
                 };
               }
@@ -940,49 +946,42 @@ export async function POST(request: Request) {
                 const scope = toolArgs.scope || 'global';
                 const isGlobal = scope === 'global';
                 
-                let endpoint;
-                if (toolArgs.type === 'rule') {
-                  endpoint = isGlobal 
-                    ? `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/global/rules`
-                    : `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/projects/${setConstraintsProjectId}/rules`;
-                } else if (toolArgs.type === 'user_preference') {
-                  endpoint = isGlobal 
-                    ? `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/global/preferences`
-                    : `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/projects/${setConstraintsProjectId}/preferences`;
-                } else {
-                  throw new Error(`Invalid constraint type: ${toolArgs.type}. Must be 'rule' or 'user_preference'.`);
-                }
+                // Use unified constraints API
+                const endpoint = isGlobal 
+                  ? `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/global/constraints`
+                  : `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/projects/${setConstraintsProjectId}/constraints`;
                 
                 const response = await fetch(endpoint, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
                     source: toolArgs.source,
-                    content: toolArgs.content
+                    content: toolArgs.content,
+                    category: toolArgs.category || 'rule'
                   })
                 });
                 
                 if (!response.ok) {
                   const errorData = await response.text();
-                  throw new Error(`Failed to store ${toolArgs.type}: ${response.statusText} - ${errorData}`);
+                  throw new Error(`Failed to store constraint: ${response.statusText} - ${errorData}`);
                 }
                 
                 const data = await response.json();
-                const constraintId = data.data?.rule?.id || data.data?.preference?.id;
+                const constraintId = data.data?.constraint?.id;
                 
                 result = {
                   success: true,
-                  message: `${toolArgs.type === 'rule' ? 'Rule' : 'Preference'} stored successfully in database`,
+                  message: `Constraint (${toolArgs.category}) stored successfully in database`,
                   constraint_id: constraintId,
                   source: toolArgs.source,
-                  type: toolArgs.type,
+                  category: toolArgs.category,
                   scope: scope,
-                  workflow_tip: `Use 'codebase.check_constraints' before coding to ensure compliance with this ${toolArgs.type}.`
+                  workflow_tip: `Use 'codebase.check_constraints' before coding to ensure compliance with this ${toolArgs.category} constraint.`
                 };
               } catch (error) {
                 result = {
                   success: false,
-                  error: `Failed to store ${toolArgs.type || 'constraint'} in database: ${error instanceof Error ? error.message : 'Unknown error'}`,
+                  error: `Failed to store constraint in database: ${error instanceof Error ? error.message : 'Unknown error'}`,
                   troubleshooting: 'Check that the database API endpoints are accessible and the constraint data is valid.'
                 };
               }

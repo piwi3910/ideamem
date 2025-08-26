@@ -249,7 +249,13 @@ Before using ANY of these, MUST validate:
 - `conversation`: Chat/discussion content
 
 ### For codebase.set_constraints (Database Storage)
-- `rule`: Business rules and coding constraints (stored in database)
-- `user_preference`: User settings and team preferences (stored in database)
+- `rule`: Business rules and coding constraints (stored in database) - Category: 'rule'
+- `user_preference`: User settings and team preferences (stored in database) - Categories: 'tooling', 'workflow', 'formatting'
+
+### Categories for Constraints
+- **rule**: Core coding rules, standards, and architectural constraints
+- **tooling**: IDE settings, development tools, and toolchain preferences  
+- **workflow**: Development processes, Git workflows, and team practices
+- **formatting**: Code style, formatting rules, and visual consistency
 
 **IMPORTANT**: Rules and preferences are now stored in DATABASE via `codebase.set_constraints` and retrieved via `codebase.check_constraints`. Do NOT use `codebase.store` for rules/preferences.
