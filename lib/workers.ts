@@ -2,6 +2,7 @@ import { Worker, Job } from 'bullmq';
 import { updateIndexingProgress, getProject } from './projects';
 import { startIncrementalIndexing, scheduledIncrementalIndexing, fullReindex as fullReindexFunction } from './indexing';
 import { QUEUE_NAMES, IndexingJobData, ScheduledIndexingJobData, DocumentationIndexingJobData } from './queue';
+import { registerShutdownHandler } from './shutdown-manager';
 import { 
   getRepositoriesDueForReindexing, 
   checkIfRepositoryNeedsReindexing,
@@ -427,12 +428,8 @@ export function stopWorkers(): Promise<void[]> {
   return Promise.all(shutdownPromises);
 }
 
-// Graceful shutdown
-async function gracefulShutdown() {
+// Register centralized shutdown handler
+registerShutdownHandler('workers', async () => {
   console.log('Shutting down workers...');
   await stopWorkers();
-  process.exit(0);
-}
-
-process.on('SIGTERM', gracefulShutdown);
-process.on('SIGINT', gracefulShutdown);
+}, 3); // Priority 3 (after database and queues)

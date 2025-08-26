@@ -1,5 +1,6 @@
 import { PrismaClient } from './generated/prisma';
 import { loggers, getLogLevel, LOG_LEVELS } from './logger';
+import { registerShutdownHandler } from './shutdown-manager';
 
 // Global Prisma client instance to prevent multiple connections
 declare global {
@@ -62,6 +63,11 @@ class DatabaseClient {
         if (process.env.NODE_ENV !== 'production') {
           globalThis.__prisma = DatabaseClient.instance;
         }
+
+        // Register centralized shutdown handler
+        registerShutdownHandler('database', async () => {
+          await DatabaseClient.disconnect();
+        }, 1); // High priority (early shutdown)
       }
     }
     
@@ -111,19 +117,4 @@ export async function closeDatabase() {
 // Export class for testing and advanced usage
 export { DatabaseClient };
 
-// Graceful shutdown handling
-if (typeof process !== 'undefined') {
-  process.on('beforeExit', async () => {
-    await DatabaseClient.disconnect();
-  });
-  
-  process.on('SIGINT', async () => {
-    await DatabaseClient.disconnect();
-    process.exit(0);
-  });
-  
-  process.on('SIGTERM', async () => {
-    await DatabaseClient.disconnect();
-    process.exit(0);
-  });
-}
+// Note: Graceful shutdown is now handled by the centralized shutdown manager

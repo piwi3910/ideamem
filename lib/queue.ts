@@ -1,4 +1,5 @@
 import { Queue, Worker, Job, QueueOptions, WorkerOptions } from 'bullmq';
+import { registerShutdownHandler } from './shutdown-manager';
 
 // Job data types
 export interface IndexingJobData {
@@ -428,6 +429,5 @@ export async function closeQueues() {
   }
 }
 
-// Process cleanup on exit
-process.on('SIGTERM', closeQueues);
-process.on('SIGINT', closeQueues);
+// Register centralized shutdown handler
+registerShutdownHandler('queues', closeQueues, 2); // Priority 2 (after database)
