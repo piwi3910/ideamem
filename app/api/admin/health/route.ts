@@ -2,14 +2,76 @@ import { NextResponse } from 'next/server';
 import { getConfig } from '@/lib/config';
 
 export async function POST(request: Request) {
-  const { service } = await request.json();
+  let service;
+  
+  try {
+    const body = await request.json();
+    service = body.service;
+  } catch (error) {
+    // If no body is provided or JSON parsing fails, check all services
+    service = null;
+  }
+  
   const config = await getConfig();
 
+  // If no service specified, check all services
   if (!service) {
-    return NextResponse.json(
-      { status: 'error', message: 'Service not specified.' },
-      { status: 400 }
-    );
+    const results = {
+      qdrant: { status: 'unknown', url: config.qdrantUrl, error: null, collections: [] },
+      ollama: { status: 'unknown', url: config.ollamaUrl, error: null, models: [] }
+    };
+
+    // Test Qdrant
+    try {
+      const qdrantResponse = await fetch(config.qdrantUrl, { method: 'GET' });
+      if (qdrantResponse.ok) {
+        results.qdrant.status = 'healthy';
+        
+        // Try to get collections
+        try {
+          const collectionsResponse = await fetch(`${config.qdrantUrl}/collections`);
+          if (collectionsResponse.ok) {
+            const collectionsData = await collectionsResponse.json();
+            results.qdrant.collections = collectionsData.result?.collections || [];
+          }
+        } catch (collectionsError) {
+          // Collections fetch failed, but service is still healthy
+        }
+      } else {
+        results.qdrant.status = 'unhealthy';
+        results.qdrant.error = `HTTP ${qdrantResponse.status}`;
+      }
+    } catch (error) {
+      results.qdrant.status = 'unhealthy';
+      results.qdrant.error = error instanceof Error ? error.message : 'Connection failed';
+    }
+
+    // Test Ollama
+    try {
+      const ollamaResponse = await fetch(config.ollamaUrl, { method: 'GET' });
+      if (ollamaResponse.ok) {
+        results.ollama.status = 'healthy';
+        
+        // Try to get models
+        try {
+          const modelsResponse = await fetch(`${config.ollamaUrl}/api/tags`);
+          if (modelsResponse.ok) {
+            const modelsData = await modelsResponse.json();
+            results.ollama.models = modelsData.models?.map((m: any) => m.name) || [];
+          }
+        } catch (modelsError) {
+          // Models fetch failed, but service is still healthy
+        }
+      } else {
+        results.ollama.status = 'unhealthy';
+        results.ollama.error = `HTTP ${ollamaResponse.status}`;
+      }
+    } catch (error) {
+      results.ollama.status = 'unhealthy';
+      results.ollama.error = error instanceof Error ? error.message : 'Connection failed';
+    }
+
+    return NextResponse.json(results);
   }
 
   try {

@@ -1,6 +1,5 @@
 'use client';
 
-import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
   FolderIcon,
@@ -12,105 +11,17 @@ import {
   ArrowPathIcon,
   QueueListIcon,
   CalendarIcon,
+  ExclamationCircleIcon,
 } from '@heroicons/react/24/outline';
 import MetricCard from '@/components/MetricCard';
 import RecentActivity from '@/components/RecentActivity';
 
-interface DashboardMetrics {
-  overview: {
-    projectsCount: number;
-    totalQueries: number;
-    activeProjects: number;
-    dbSize: number;
-    vectorMetrics: {
-      collectionExists: boolean;
-      totalVectors: number;
-      collectionSize: number;
-      status: string;
-      segments?: number;
-      indexedVectors?: number;
-      optimizerStatus?: string;
-      indexingProgress?: number;
-      vectorsPerSegment?: number;
-    };
-  };
-  projects: {
-    total: number;
-    statusBreakdown: Record<string, number>;
-  };
-  indexing: {
-    totalJobs: number;
-    statusBreakdown: Record<string, number>;
-  };
-  content: {
-    globalRules: number;
-    globalPreferences: number;
-    totalVectors: number;
-  };
-  recentActivity: Array<{
-    id: string;
-    projectName: string;
-    status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
-    startedAt: string;
-    completedAt?: string | null;
-    progress: number;
-    vectorsAdded: number;
-  }>;
-  timestamp: string;
-}
+// Import React Query hooks
+import { useDashboardMetrics, useQdrantMetrics } from '@/hooks/use-admin';
 
-interface QueueStats {
-  [queueName: string]: {
-    waiting: number;
-    active: number;
-    completed: number;
-    failed: number;
-    paused: boolean;
-    error?: string;
-  };
-}
-
-interface QueueMetrics {
-  queueStats: QueueStats;
-  documentationScheduler: {
-    enabled: boolean;
-    interval: number;
-    activeRepositories: number;
-    scheduledJobId: string | null;
-  };
-  summary: {
-    totalJobs: number;
-    totalActive: number;
-    totalWaiting: number;
-    totalCompleted: number;
-    totalFailed: number;
-  };
-}
-
-// Qdrant Performance Metrics Component
+// Qdrant Performance Metrics Component using React Query
 function QdrantPerformanceSection() {
-  const [metrics, setMetrics] = useState<any>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-
-  const fetchQdrantMetrics = async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const response = await fetch('/api/admin/qdrant-metrics');
-      if (!response.ok) throw new Error('Failed to fetch Qdrant metrics');
-      const data = await response.json();
-      setMetrics(data.metrics);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchQdrantMetrics();
-  }, []);
+  const { data: metrics, isLoading: loading, error, refetch } = useQdrantMetrics();
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
@@ -125,7 +36,7 @@ function QdrantPerformanceSection() {
           </div>
         </div>
         <button
-          onClick={fetchQdrantMetrics}
+          onClick={() => refetch()}
           disabled={loading}
           className="px-3 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md flex items-center gap-2 disabled:opacity-50"
         >
@@ -136,7 +47,7 @@ function QdrantPerformanceSection() {
 
       {error && (
         <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md">
-          <p className="text-sm text-red-700">{error}</p>
+          <p className="text-sm text-red-700">{error.message}</p>
         </div>
       )}
 
@@ -146,119 +57,145 @@ function QdrantPerformanceSection() {
           <div className="h-4 bg-gray-200 rounded w-1/2"></div>
           <div className="h-4 bg-gray-200 rounded w-2/3"></div>
         </div>
-      ) : metrics ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {/* Collection Status */}
-          <div className="bg-blue-50 p-4 rounded-lg">
-            <h4 className="font-medium text-blue-900 mb-2">Collection Status</h4>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-blue-700">Status:</span>
-                <span className={`font-medium ${metrics.collection.status === 'green' ? 'text-green-600' : 'text-yellow-600'}`}>
-                  {metrics.collection.status}
-                </span>
+      ) : metrics?.collection ? (
+        <div className="space-y-6">
+          {/* Collection Overview */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-blue-50 p-4 rounded-lg">
+              <h4 className="font-medium text-blue-900 mb-2">Collection Status</h4>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-blue-700">Status:</span>
+                  <span className={`font-medium ${metrics.collection.status === 'green' ? 'text-green-600' : 'text-yellow-600'}`}>
+                    {metrics.collection.status}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-blue-700">Points:</span>
+                  <span className="font-medium">{(metrics.collection.points_count || 0).toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-blue-700">Segments:</span>
+                  <span className="font-medium">{metrics.collection.segments_count || 0}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-blue-700">Optimizer:</span>
+                  <span className={`font-medium ${metrics.collection.optimizer_status === 'ok' ? 'text-green-600' : 'text-yellow-600'}`}>
+                    {metrics.collection.optimizer_status}
+                  </span>
+                </div>
               </div>
-              <div className="flex justify-between">
-                <span className="text-blue-700">Points:</span>
-                <span className="font-medium">{(metrics.collection.points_count || 0).toLocaleString()}</span>
+            </div>
+
+            <div className="bg-green-50 p-4 rounded-lg">
+              <h4 className="font-medium text-green-900 mb-2">Performance Metrics</h4>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-green-700">Indexing Progress:</span>
+                  <span className="font-medium">{metrics.performance_indicators.indexing_progress.toFixed(1)}%</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-green-700">Indexing Efficiency:</span>
+                  <span className="font-medium">{(metrics.performance_indicators.indexing_efficiency * 100).toFixed(1)}%</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-green-700">Vectors/Segment:</span>
+                  <span className="font-medium">{metrics.performance_indicators.vectors_per_segment.toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-green-700">Indexed Vectors:</span>
+                  <span className="font-medium">{(metrics.collection.indexed_vectors_count || 0).toLocaleString()}</span>
+                </div>
               </div>
-              <div className="flex justify-between">
-                <span className="text-blue-700">Segments:</span>
-                <span className="font-medium">{metrics.collection.segments_count || 0}</span>
+            </div>
+
+            <div className="bg-purple-50 p-4 rounded-lg">
+              <h4 className="font-medium text-purple-900 mb-2">Configuration</h4>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-purple-700">Vector Size:</span>
+                  <span className="font-medium">{metrics.collection.config?.params?.vectors?.size || 'N/A'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-purple-700">Distance:</span>
+                  <span className="font-medium">{metrics.collection.config?.params?.vectors?.distance || 'N/A'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-purple-700">Shards:</span>
+                  <span className="font-medium">{metrics.collection.config?.params?.shard_number || 'N/A'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-purple-700">On Disk:</span>
+                  <span className="font-medium">{metrics.collection.config?.params?.on_disk_payload ? 'Yes' : 'No'}</span>
+                </div>
               </div>
             </div>
           </div>
 
-          {/* Performance Indicators */}
-          <div className="bg-green-50 p-4 rounded-lg">
-            <h4 className="font-medium text-green-900 mb-2">Performance</h4>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-green-700">Indexing Efficiency:</span>
-                <span className="font-medium">{(metrics.performance_indicators.indexing_efficiency * 100).toFixed(1)}%</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-green-700">Indexing Progress:</span>
-                <span className="font-medium">{metrics.performance_indicators.indexing_progress.toFixed(1)}%</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-green-700">Vectors/Segment:</span>
-                <span className="font-medium">{metrics.performance_indicators.vectors_per_segment.toLocaleString()}</span>
+          {/* Advanced Configuration */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <h4 className="font-medium text-gray-900 mb-3">HNSW Configuration</h4>
+              <div className="space-y-2 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-gray-600">M (connections):</span>
+                  <span className="font-medium">{metrics.collection.config?.hnsw_config?.m || 'N/A'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">EF Construct:</span>
+                  <span className="font-medium">{metrics.collection.config?.hnsw_config?.ef_construct || 'N/A'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Full Scan Threshold:</span>
+                  <span className="font-medium">{(metrics.collection.config?.hnsw_config?.full_scan_threshold || 0).toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">On Disk:</span>
+                  <span className="font-medium">{metrics.collection.config?.hnsw_config?.on_disk ? 'Yes' : 'No'}</span>
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Collection Health */}
-          <div className="bg-purple-50 p-4 rounded-lg">
-            <h4 className="font-medium text-purple-900 mb-2">Collection Health</h4>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-purple-700">Total Vectors:</span>
-                <span className="font-medium">{metrics.performance_indicators.collection_health.total_vectors.toLocaleString()}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-purple-700">Total Segments:</span>
-                <span className="font-medium">{metrics.performance_indicators.collection_health.total_segments}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-purple-700">Optimizer:</span>
-                <span className={`font-medium ${typeof metrics.performance_indicators.collection_health.optimizer_status === 'string' && metrics.performance_indicators.collection_health.optimizer_status === 'ok' ? 'text-green-600' : 'text-gray-600'}`}>
-                  {typeof metrics.performance_indicators.collection_health.optimizer_status === 'string' 
-                    ? metrics.performance_indicators.collection_health.optimizer_status 
-                    : 'Unknown'}
-                </span>
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <h4 className="font-medium text-gray-900 mb-3">Optimizer Settings</h4>
+              <div className="space-y-2 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Deleted Threshold:</span>
+                  <span className="font-medium">{((metrics.collection.config?.optimizer_config?.deleted_threshold || 0) * 100).toFixed(0)}%</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Indexing Threshold:</span>
+                  <span className="font-medium">{(metrics.collection.config?.optimizer_config?.indexing_threshold || 0).toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Flush Interval:</span>
+                  <span className="font-medium">{metrics.collection.config?.optimizer_config?.flush_interval_sec || 0}s</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">WAL Capacity:</span>
+                  <span className="font-medium">{metrics.collection.config?.wal_config?.wal_capacity_mb || 0}MB</span>
+                </div>
               </div>
             </div>
           </div>
         </div>
-      ) : null}
+      ) : (
+        <div className="text-center py-8">
+          <p className="text-gray-500">No Qdrant metrics available</p>
+        </div>
+      )}
     </div>
   );
 }
 
 export default function DashboardPage() {
-  const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [queueMetrics, setQueueMetrics] = useState<QueueMetrics | null>(null);
-
-  useEffect(() => {
-    fetchMetrics();
-    loadQueueMetrics();
-    
-    // Refresh metrics every 30 seconds
-    const interval = setInterval(() => {
-      fetchMetrics();
-      loadQueueMetrics();
-    }, 30000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const fetchMetrics = async () => {
-    try {
-      setError('');
-      const response = await fetch('/api/dashboard/metrics');
-      if (!response.ok) throw new Error('Failed to fetch metrics');
-      const data = await response.json();
-      setMetrics(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load metrics');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadQueueMetrics = async () => {
-    try {
-      const response = await fetch('/api/admin/queue-stats');
-      if (response.ok) {
-        const data = await response.json();
-        setQueueMetrics(data);
-      }
-    } catch (error) {
-      console.error('Failed to load queue metrics:', error);
-    }
-  };
+  // React Query hooks for data fetching
+  const { 
+    data: metrics, 
+    isLoading: loading, 
+    error, 
+    refetch: refetchMetrics 
+  } = useDashboardMetrics();
 
   const formatBytes = (bytes: number) => {
     if (bytes === 0) return '0 Bytes';
@@ -272,10 +209,13 @@ export default function DashboardPage() {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
+          <div className="flex items-center justify-center mb-4">
+            <ExclamationCircleIcon className="h-8 w-8 text-red-500" />
+          </div>
           <div className="text-red-600 mb-4">Error loading dashboard</div>
-          <p className="text-gray-600 mb-4">{error}</p>
+          <p className="text-gray-600 mb-4">{error.message}</p>
           <button
-            onClick={fetchMetrics}
+            onClick={() => refetchMetrics()}
             className="btn btn-primary"
           >
             Retry
@@ -306,102 +246,6 @@ export default function DashboardPage() {
           </Link>
         </div>
       </div>
-
-      {/* Queue & Scheduling Metrics */}
-      {queueMetrics && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Job Summary */}
-          <div className="card">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 bg-blue-100 rounded-lg">
-                <QueueListIcon className="h-6 w-6 text-blue-600" />
-              </div>
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900">Job Queue</h3>
-                <p className="text-sm text-gray-600">Background processing status</p>
-              </div>
-            </div>
-            
-            <div className="space-y-3">
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Active Jobs</span>
-                <span className="font-medium text-blue-600">{queueMetrics.summary.totalActive}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Waiting</span>
-                <span className="font-medium text-yellow-600">{queueMetrics.summary.totalWaiting}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Completed</span>
-                <span className="font-medium text-green-600">{queueMetrics.summary.totalCompleted}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Failed</span>
-                <span className="font-medium text-red-600">{queueMetrics.summary.totalFailed}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Documentation Scheduler */}
-          <div className="card">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 bg-purple-100 rounded-lg">
-                <CalendarIcon className="h-6 w-6 text-purple-600" />
-              </div>
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900">Documentation</h3>
-                <p className="text-sm text-gray-600">Automatic reindexing schedule</p>
-              </div>
-            </div>
-            
-            <div className="space-y-3">
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Status</span>
-                <span className={`font-medium ${queueMetrics.documentationScheduler.enabled ? 'text-green-600' : 'text-gray-500'}`}>
-                  {queueMetrics.documentationScheduler.enabled ? 'Enabled' : 'Disabled'}
-                </span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Interval</span>
-                <span className="font-medium text-gray-900">
-                  {queueMetrics.documentationScheduler.interval} days
-                </span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Active Repos</span>
-                <span className="font-medium text-blue-600">{queueMetrics.documentationScheduler.activeRepositories}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Queue Details */}
-          <div className="card">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 bg-green-100 rounded-lg">
-                <CpuChipIcon className="h-6 w-6 text-green-600" />
-              </div>
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900">Queues</h3>
-                <p className="text-sm text-gray-600">Individual queue status</p>
-              </div>
-            </div>
-            
-            <div className="space-y-2 text-xs">
-              {Object.entries(queueMetrics.queueStats).map(([queueName, stats]) => (
-                <div key={queueName} className="flex items-center justify-between py-1">
-                  <div className="flex items-center gap-2">
-                    <div className={`w-2 h-2 rounded-full ${stats.error ? 'bg-red-500' : stats.paused ? 'bg-yellow-500' : 'bg-green-500'}`}></div>
-                    <span className="text-gray-700 font-medium capitalize">{queueName.replace('-', ' ')}</span>
-                  </div>
-                  <div className="text-gray-600">
-                    {stats.error ? 'Error' : `${stats.active}/${stats.waiting}`}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Key Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -454,9 +298,9 @@ export default function DashboardPage() {
         />
         
         <MetricCard
-          title="Global Rules"
-          value={metrics?.content.globalRules ?? 0}
-          subtitle="Coding standards"
+          title="Documentation Repositories"
+          value={metrics?.overview.documentationRepositoriesCount ?? 0}
+          subtitle="Indexed documentation"
           icon={<ServerIcon className="h-6 w-6" />}
           color="blue"
           loading={loading}
@@ -465,7 +309,7 @@ export default function DashboardPage() {
         <MetricCard
           title="Global Preferences"
           value={metrics?.content.globalPreferences ?? 0}
-          subtitle="System preferences"
+          subtitle="System constraints"
           icon={<CpuChipIcon className="h-6 w-6" />}
           color="green"
           loading={loading}

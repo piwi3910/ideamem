@@ -7,12 +7,15 @@ import {
 
 interface ActivityItem {
   id: string;
-  projectName: string;
-  status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
+  type: 'project' | 'documentation';
+  projectName?: string;
+  repositoryName?: string;
+  status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED' | string;
   startedAt: string;
   completedAt?: string | null;
   progress: number;
-  vectorsAdded: number;
+  vectorsAdded?: number;
+  documentsAdded?: number;
 }
 
 interface RecentActivityProps {
@@ -83,7 +86,7 @@ export default function RecentActivity({ activities, loading = false }: RecentAc
         ) : (
           <div className="space-y-4">
             {activities.map((activity) => {
-              const config = statusConfig[activity.status];
+              const config = statusConfig[activity.status as keyof typeof statusConfig] || statusConfig.PENDING;
               const Icon = config.icon;
               
               return (
@@ -94,13 +97,13 @@ export default function RecentActivity({ activities, loading = false }: RecentAc
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between">
                       <p className="text-sm font-medium text-gray-900 truncate">
-                        {activity.projectName}
+                        {activity.type === 'project' ? activity.projectName : activity.repositoryName}
                       </p>
                       <span className="text-xs text-gray-500">
                         {formatTimeAgo(activity.startedAt)}
                       </span>
                     </div>
-                    <div className="mt-1">
+                    <div className="mt-1 flex items-center gap-2">
                       <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
                         activity.status === 'COMPLETED' ? 'bg-green-100 text-green-800' :
                         activity.status === 'RUNNING' ? 'bg-blue-100 text-blue-800' :
@@ -109,14 +112,21 @@ export default function RecentActivity({ activities, loading = false }: RecentAc
                       }`}>
                         {activity.status.toLowerCase()}
                       </span>
+                      <span className="text-xs text-gray-500">
+                        {activity.type === 'project' ? 'Project' : 'Documentation'} Indexing
+                      </span>
                       {activity.status === 'RUNNING' && (
-                        <span className="ml-2 text-xs text-gray-500">
+                        <span className="text-xs text-gray-500">
                           {activity.progress}% complete
                         </span>
                       )}
-                      {activity.status === 'COMPLETED' && activity.vectorsAdded > 0 && (
-                        <span className="ml-2 text-xs text-gray-500">
-                          +{activity.vectorsAdded.toLocaleString()} vectors
+                      {activity.status === 'COMPLETED' && (
+                        <span className="text-xs text-gray-500">
+                          {activity.type === 'project' && activity.vectorsAdded ? 
+                            `+${activity.vectorsAdded.toLocaleString()} vectors` : 
+                            activity.type === 'documentation' && activity.documentsAdded ?
+                            `+${activity.documentsAdded.toLocaleString()} docs` : ''
+                          }
                         </span>
                       )}
                     </div>

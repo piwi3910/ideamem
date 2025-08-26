@@ -2,6 +2,16 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+
+// Import React Query hooks
+import { 
+  useProject, 
+  useDeleteProject, 
+  useStartIndexing, 
+  useStopIndexing, 
+  useRegenerateToken, 
+  useIndexingJob 
+} from '@/hooks/use-projects';
 import { Dialog } from '@headlessui/react';
 import {
   ArrowLeftIcon,

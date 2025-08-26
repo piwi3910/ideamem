@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import {
   CheckCircleIcon,
   ExclamationCircleIcon,
@@ -16,6 +16,10 @@ import {
 } from '@heroicons/react/24/outline';
 import { twMerge } from 'tailwind-merge';
 
+// Import React Query hooks
+import { useDocumentationRepositories, useCreateRepository, useUpdateRepository, useDeleteRepository, type DocumentationRepository } from '@/hooks/use-documentation';
+
+// Define display interface that matches the existing UI
 interface DocRepository {
   id: string;
   name: string;
@@ -31,97 +35,93 @@ interface DocRepository {
   lastError?: string;
 }
 
+// Map backend DocumentationRepository to display DocRepository
+function mapRepositoryForDisplay(repo: DocumentationRepository): DocRepository {
+  const status = repo.indexingProgress > 0 && repo.indexingProgress < 100 ? 'indexing' :
+                 repo.lastError ? 'error' :
+                 repo.totalDocuments > 0 ? 'completed' : 'pending';
+  
+  return {
+    id: repo.id,
+    name: repo.name,
+    sourceType: repo.type,
+    gitUrl: repo.type === 'git' ? repo.url : undefined,
+    url: repo.type !== 'git' ? repo.url : undefined,
+    branch: repo.metadata?.branch,
+    description: repo.description,
+    languages: repo.languages,
+    lastIndexed: repo.lastIndexedAt,
+    status,
+    documentCount: repo.totalDocuments,
+    lastError: repo.lastError,
+  };
+}
+
+// Map display DocRepository back to DocumentationRepository for updates
+function mapRepositoryForAPI(repo: DocRepository): Partial<DocumentationRepository> {
+  return {
+    id: repo.id,
+    name: repo.name,
+    description: repo.description,
+    url: repo.gitUrl || repo.url || '',
+    languages: repo.languages,
+    metadata: repo.branch ? { branch: repo.branch } : undefined,
+  };
+}
+
 
 export default function DocsPage() {
-  const [repositories, setRepositories] = useState<DocRepository[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  // React Query hooks
+  const { data: rawRepositories = [], isLoading: loading, error: fetchError } = useDocumentationRepositories();
+  const createRepoMutation = useCreateRepository();
+  const updateRepoMutation = useUpdateRepository();
+  const deleteRepoMutation = useDeleteRepository();
+  
+  // Map the repositories for display
+  const repositories = rawRepositories.map(mapRepositoryForDisplay);
+  
+  // Local UI state
   const [editingRepo, setEditingRepo] = useState<DocRepository | null>(null);
   const [newRepo, setNewRepo] = useState({
     url: '',
   });
   const [showAddForm, setShowAddForm] = useState(false);
-  const [saveMessage, setSaveMessage] = useState('');
-
-  useEffect(() => {
-    fetchRepositories();
-
-    // Poll for status updates every 30 seconds - less aggressive to prevent scroll issues
-    const interval = setInterval(() => {
-      fetchRepositories(false); // Don't show loading spinner for background updates
-    }, 30000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const fetchRepositories = async (showLoading = true) => {
-    try {
-      if (showLoading) setLoading(true);
-      const response = await fetch('/api/global/docs/repositories');
-      if (!response.ok) throw new Error('Failed to fetch repositories');
-      const data = await response.json();
-      setRepositories(data.repositories || []);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch repositories');
-    } finally {
-      if (showLoading) setLoading(false);
-    }
-  };
-
+  
+  const error = fetchError?.message || createRepoMutation.error?.message || 
+                updateRepoMutation.error?.message || deleteRepoMutation.error?.message || '';
+  
+  const saveMessage = createRepoMutation.isSuccess ? 
+    `Repository "${createRepoMutation.data?.name}" added and indexing started automatically!` :
+    updateRepoMutation.isSuccess ? 'Repository updated successfully' :
+    deleteRepoMutation.isSuccess ? 'Repository deleted successfully' : '';
 
   const handleAddRepository = async () => {
     if (!newRepo.url.trim()) {
-      setError('URL is required');
       return;
     }
 
-    try {
-      const response = await fetch('/api/global/docs/repositories', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          url: newRepo.url,
-        }),
-      });
-
-      if (!response.ok) throw new Error('Failed to add repository');
-
-      const data = await response.json();
-      setSaveMessage(
-        `${data.repository.sourceType === 'git' ? 'Repository' : data.repository.sourceType === 'llmstxt' ? 'llms.txt file' : 'Website'} "${data.repository.name}" added and indexing started automatically!`
-      );
-      setNewRepo({ url: '' });
-      setShowAddForm(false);
-      await fetchRepositories(false);
-
-      setTimeout(() => setSaveMessage(''), 5000);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add repository');
-    }
+    createRepoMutation.mutate({
+      url: newRepo.url,
+    }, {
+      onSuccess: () => {
+        setNewRepo({ url: '' });
+        setShowAddForm(false);
+      }
+    });
   };
 
   const handleEditRepository = async (repo: DocRepository) => {
     if (!editingRepo) return;
 
-    try {
-      const response = await fetch('/api/global/docs/repositories', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...editingRepo,
-          id: repo.id,
-        }),
-      });
-
-      if (!response.ok) throw new Error('Failed to update repository');
-
-      setSaveMessage('Repository updated successfully');
-      setEditingRepo(null);
-      await fetchRepositories(false);
-
-      setTimeout(() => setSaveMessage(''), 3000);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update repository');
-    }
+    const apiData = mapRepositoryForAPI(editingRepo);
+    updateRepoMutation.mutate({
+      ...apiData,
+      id: repo.id,
+    }, {
+      onSuccess: () => {
+        setEditingRepo(null);
+      }
+    });
   };
 
   const handleDeleteRepository = async (repo: DocRepository) => {
@@ -133,25 +133,10 @@ export default function DocsPage() {
       return;
     }
 
-    try {
-      const response = await fetch('/api/global/docs/repositories', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: repo.id }),
-      });
-
-      if (!response.ok) throw new Error('Failed to delete repository');
-
-      setSaveMessage('Repository deleted successfully');
-      await fetchRepositories(false);
-
-      setTimeout(() => setSaveMessage(''), 3000);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete repository');
-    }
+    deleteRepoMutation.mutate(repo.id);
   };
 
-  const getStatusIcon = (status: DocRepository['status']) => {
+  const getStatusIcon = (status: 'pending' | 'indexing' | 'completed' | 'error') => {
     const className = 'h-5 w-5';
     switch (status) {
       case 'completed':
@@ -165,7 +150,7 @@ export default function DocsPage() {
     }
   };
 
-  const getStatusColor = (status: DocRepository['status']) => {
+  const getStatusColor = (status: 'pending' | 'indexing' | 'completed' | 'error') => {
     switch (status) {
       case 'completed':
         return 'text-green-600';
@@ -178,7 +163,7 @@ export default function DocsPage() {
     }
   };
 
-  const getSourceTypeIcon = (sourceType: DocRepository['sourceType']) => {
+  const getSourceTypeIcon = (sourceType: 'git' | 'llmstxt' | 'website') => {
     const className = 'h-5 w-5 text-indigo-600';
     switch (sourceType) {
       case 'git':
@@ -192,7 +177,7 @@ export default function DocsPage() {
     }
   };
 
-  const getSourceTypeLabel = (sourceType: DocRepository['sourceType']) => {
+  const getSourceTypeLabel = (sourceType: 'git' | 'llmstxt' | 'website') => {
     switch (sourceType) {
       case 'git':
         return 'Git Repository';

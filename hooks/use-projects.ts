@@ -193,3 +193,65 @@ export function useStartIndexing() {
     },
   });
 }
+
+async function stopIndexing(projectId: string): Promise<void> {
+  const response = await fetch(`/api/projects/${projectId}/index`, {
+    method: 'DELETE',
+  });
+  
+  if (!response.ok) {
+    throw new Error(`Failed to stop indexing: ${response.statusText}`);
+  }
+}
+
+export function useStopIndexing() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: (projectId: string) => stopIndexing(projectId),
+    onSuccess: (_, projectId) => {
+      queryClient.invalidateQueries({ queryKey: projectKeys.detail(projectId) });
+      queryClient.invalidateQueries({ queryKey: projectKeys.indexingJobs(projectId) });
+    },
+  });
+}
+
+async function regenerateToken(projectId: string): Promise<void> {
+  const response = await fetch(`/api/projects/${projectId}/token`, {
+    method: 'POST',
+  });
+  
+  if (!response.ok) {
+    throw new Error(`Failed to regenerate token: ${response.statusText}`);
+  }
+}
+
+export function useRegenerateToken() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: (projectId: string) => regenerateToken(projectId),
+    onSuccess: (_, projectId) => {
+      queryClient.invalidateQueries({ queryKey: projectKeys.detail(projectId) });
+    },
+  });
+}
+
+async function fetchIndexingJob(projectId: string): Promise<IndexingJob | null> {
+  const response = await fetch('/api/projects/indexing/status');
+  if (!response.ok) {
+    throw new Error(`Failed to fetch indexing job: ${response.statusText}`);
+  }
+  const data = await response.json();
+  return data.jobs[projectId] || null;
+}
+
+export function useIndexingJob(projectId: string) {
+  return useQuery({
+    queryKey: [...projectKeys.detail(projectId), 'indexing-job'],
+    queryFn: () => fetchIndexingJob(projectId),
+    enabled: !!projectId,
+    refetchInterval: 2000, // Poll every 2 seconds
+    staleTime: 0, // Always consider stale for real-time updates
+  });
+}

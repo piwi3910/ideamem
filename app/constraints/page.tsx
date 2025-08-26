@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import {
   CheckCircleIcon,
   ExclamationCircleIcon,
@@ -15,19 +15,8 @@ import {
   TagIcon,
 } from '@heroicons/react/24/outline';
 
-interface Constraint {
-  id: string;
-  score?: number;
-  payload: {
-    content: string;
-    source: string;
-    category: string;
-    type: 'user_preference';
-    language: 'markdown';
-    scope: 'global';
-    project_id: 'global';
-  };
-}
+// Import React Query hooks
+import { useGlobalConstraints, useCreateGlobalConstraint, useUpdateGlobalConstraint, useDeleteGlobalConstraint, type Constraint } from '@/hooks/use-constraints';
 
 const CATEGORY_OPTIONS = [
   { value: 'rule', label: 'Rule', icon: ShieldCheckIcon, color: 'green' },
@@ -38,101 +27,64 @@ const CATEGORY_OPTIONS = [
 
 
 export default function ConstraintsPage() {
-  const [constraints, setConstraints] = useState<Constraint[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  // React Query hooks
+  const { data: constraintsData, isLoading: loading, error: fetchError } = useGlobalConstraints();
+  const constraints = constraintsData?.constraints || [];
+  const createConstraintMutation = useCreateGlobalConstraint();
+  const updateConstraintMutation = useUpdateGlobalConstraint();
+  const deleteConstraintMutation = useDeleteGlobalConstraint();
+  
+  // Local UI state
   const [editingConstraint, setEditingConstraint] = useState<Constraint | null>(null);
-  const [newConstraint, setNewConstraint] = useState({ 
+  const [newConstraint, setNewConstraint] = useState<{
+    source: string;
+    content: string;
+    category: 'rule' | 'tooling' | 'workflow' | 'formatting';
+  }>({ 
     source: '', 
     content: '', 
     category: 'rule'
   });
   const [showAddForm, setShowAddForm] = useState(false);
-  const [saveMessage, setSaveMessage] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
-
-  useEffect(() => {
-    fetchConstraints();
-  }, []);
-
-  const fetchConstraints = async () => {
-    try {
-      setLoading(true);
-      
-      // Fetch unified constraints
-      const response = await fetch('/api/global/constraints');
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch constraints');
-      }
-
-      const data = await response.json();
-      const allConstraints = data.data?.constraints || [];
-
-      setConstraints(allConstraints);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch constraints');
-    } finally {
-      setLoading(false);
-    }
-  };
+  
+  const error = fetchError?.message || createConstraintMutation.error?.message || 
+                updateConstraintMutation.error?.message || deleteConstraintMutation.error?.message || '';
+  
+  const saveMessage = createConstraintMutation.isSuccess ? 'Constraint added successfully' :
+                     updateConstraintMutation.isSuccess ? 'Constraint updated successfully' :
+                     deleteConstraintMutation.isSuccess ? 'Constraint deleted successfully' : '';
 
   const handleAddConstraint = async () => {
     if (!newConstraint.source.trim() || !newConstraint.content.trim()) {
-      setError('Source and content are required');
       return;
     }
 
-    try {
-      const response = await fetch('/api/global/constraints', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          source: newConstraint.source,
-          content: newConstraint.content,
-          category: newConstraint.category,
-          language: 'markdown',
-        }),
-      });
-
-      if (!response.ok) throw new Error('Failed to add constraint');
-
-      setSaveMessage('Constraint added successfully');
-      setNewConstraint({ source: '', content: '', category: 'rule' });
-      setShowAddForm(false);
-      await fetchConstraints();
-
-      setTimeout(() => setSaveMessage(''), 3000);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add constraint');
-    }
+    createConstraintMutation.mutate({
+      source: newConstraint.source,
+      content: newConstraint.content,
+      category: newConstraint.category,
+    }, {
+      onSuccess: () => {
+        setNewConstraint({ source: '', content: '', category: 'rule' });
+        setShowAddForm(false);
+      }
+    });
   };
 
   const handleEditConstraint = async (constraint: Constraint) => {
     if (!editingConstraint) return;
 
-    try {
-      const response = await fetch('/api/global/constraints', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: constraint.id,
-          source: editingConstraint.payload.source,
-          content: editingConstraint.payload.content,
-          category: editingConstraint.payload.category,
-        }),
-      });
-
-      if (!response.ok) throw new Error('Failed to update constraint');
-
-      setSaveMessage('Constraint updated successfully');
-      setEditingConstraint(null);
-      await fetchConstraints();
-
-      setTimeout(() => setSaveMessage(''), 3000);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update constraint');
-    }
+    updateConstraintMutation.mutate({
+      id: constraint.id,
+      source: editingConstraint.payload.source,
+      content: editingConstraint.payload.content,
+      category: editingConstraint.payload.category,
+    }, {
+      onSuccess: () => {
+        setEditingConstraint(null);
+      }
+    });
   };
 
   const handleDeleteConstraint = async (constraint: Constraint) => {
@@ -140,22 +92,7 @@ export default function ConstraintsPage() {
       return;
     }
 
-    try {
-      const response = await fetch('/api/global/constraints', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ source: constraint.payload.source }),
-      });
-
-      if (!response.ok) throw new Error('Failed to delete constraint');
-
-      setSaveMessage('Constraint deleted successfully');
-      await fetchConstraints();
-
-      setTimeout(() => setSaveMessage(''), 3000);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete constraint');
-    }
+    deleteConstraintMutation.mutate(constraint.payload.source);
   };
 
   const getCategoryConfig = (category: string) => {
@@ -284,7 +221,7 @@ export default function ConstraintsPage() {
               <select
                 className="input"
                 value={newConstraint.category}
-                onChange={(e) => setNewConstraint({ ...newConstraint, category: e.target.value })}
+                onChange={(e) => setNewConstraint({ ...newConstraint, category: e.target.value as 'rule' | 'tooling' | 'workflow' | 'formatting' })}
               >
                 {CATEGORY_OPTIONS.map(option => (
                   <option key={option.value} value={option.value}>
@@ -450,7 +387,7 @@ export default function ConstraintsPage() {
                           onChange={(e) =>
                             setEditingConstraint({
                               ...editingConstraint,
-                              payload: { ...editingConstraint.payload, category: e.target.value },
+                              payload: { ...editingConstraint.payload, category: e.target.value as 'rule' | 'tooling' | 'workflow' | 'formatting' },
                             })
                           }
                         >

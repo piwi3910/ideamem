@@ -16,6 +16,20 @@ import {
 } from '@heroicons/react/24/outline';
 import { twMerge } from 'tailwind-merge';
 
+// Import React Query hooks
+import {
+  useServiceHealth,
+  useConfig,
+  useUpdateConfig,
+  usePullOllamaModel,
+  useAvailableLogLevels,
+  useCurrentLogLevel,
+  useUpdateLogLevel,
+  type UpdateConfigData,
+} from '@/hooks/use-admin';
+
+// Import Zustand store
+import { useAdminStore } from '@/stores/admin-store';
 
 interface AppConfig {
   qdrantUrl: string;
@@ -24,67 +38,67 @@ interface AppConfig {
   docReindexInterval: number; // days
 }
 
-interface LoggingConfig {
-  currentLevel: string;
-  availableLevels: Array<{ value: string; label: string; description: string }>;
-  logLevels: Record<string, number>;
-}
-
 interface Status {
   status: 'ok' | 'error' | 'unknown' | 'not_found' | 'pulling_started';
   message: string;
 }
 
 export default function AdminPage() {
-  const [config, setConfig] = useState<AppConfig>({ 
-    qdrantUrl: '', 
-    ollamaUrl: '',
-    docReindexEnabled: true,
-    docReindexInterval: 14,
-  });
+  // Zustand store
+  const { 
+    config, 
+    saveMessage, 
+    qdrantStatus, 
+    ollamaStatus, 
+    embeddingStatus, 
+    isTesting,
+    setConfig,
+    setSaveMessage,
+    setQdrantStatus,
+    setOllamaStatus,
+    setEmbeddingStatus,
+    setIsTesting
+  } = useAdminStore();
+
+  // React Query hooks
+  const { data: serverConfig, isLoading: configLoading } = useConfig();
+  const { data: serviceHealth, refetch: refetchHealth } = useServiceHealth();
+  const { data: availableLogLevels = [] } = useAvailableLogLevels();
+  const { data: currentLogLevel } = useCurrentLogLevel();
+  const updateConfigMutation = useUpdateConfig();
+  const pullModelMutation = usePullOllamaModel();
+  const updateLogLevelMutation = useUpdateLogLevel();
+
   const [configLoaded, setConfigLoaded] = useState(false);
-  const [saveMessage, setSaveMessage] = useState('');
-  const [qdrantStatus, setQdrantStatus] = useState<Status>({ status: 'unknown', message: '' });
-  const [ollamaStatus, setOllamaStatus] = useState<Status>({ status: 'unknown', message: '' });
-  const [embeddingStatus, setEmbeddingStatus] = useState<Status>({
-    status: 'unknown',
-    message: '',
-  });
-  const [isTesting, setIsTesting] = useState(false);
-  const [loggingConfig, setLoggingConfig] = useState<LoggingConfig | null>(null);
-  const [loggingMessage, setLoggingMessage] = useState('');
 
+  // Initialize config when server data loads
   useEffect(() => {
-    fetch('/api/admin/config')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data) {
-          setConfig({
-            qdrantUrl: data.qdrantUrl || '',
-            ollamaUrl: data.ollamaUrl || '',
-            docReindexEnabled: data.docReindexEnabled ?? true,
-            docReindexInterval: data.docReindexInterval ?? 14,
-          });
-        }
-        setConfigLoaded(true);
-      })
-      .catch(() => {
-        setConfigLoaded(true);
+    if (serverConfig && !configLoaded) {
+      setConfig({
+        qdrantUrl: serverConfig.qdrantUrl || '',
+        ollamaUrl: serverConfig.ollamaUrl || '',
+        docReindexEnabled: serverConfig.docReindexEnabled ?? true,
+        docReindexInterval: serverConfig.docReindexInterval ?? 14,
       });
-  }, []);
+      setConfigLoaded(true);
+    } else if (!configLoading && !configLoaded) {
+      setConfigLoaded(true);
+    }
+  }, [serverConfig, configLoading, configLoaded, setConfig]);
 
+  // Update local status from service health data
   useEffect(() => {
-    fetch('/api/admin/logging')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success) {
-          setLoggingConfig(data.data);
-        }
-      })
-      .catch((error) => {
-        console.error('Failed to load logging configuration:', error);
+    if (serviceHealth) {
+      setQdrantStatus({
+        status: serviceHealth.qdrant.status === 'healthy' ? 'ok' : 'error',
+        message: serviceHealth.qdrant.status === 'healthy' ? 'Connected' : (serviceHealth.qdrant.error || 'Connection failed')
       });
-  }, []);
+      setOllamaStatus({
+        status: serviceHealth.ollama.status === 'healthy' ? 'ok' : 'error',
+        message: serviceHealth.ollama.status === 'healthy' ? 'Connected' : (serviceHealth.ollama.error || 'Connection failed')
+      });
+    }
+  }, [serviceHealth, setQdrantStatus, setOllamaStatus]);
 
   const handleTestConnection = async (service: 'qdrant' | 'ollama' | 'ollama-embedding') => {
     setIsTesting(true);
@@ -96,55 +110,81 @@ export default function AdminPage() {
 
     statusSetter({ status: 'unknown', message: 'Testing...' });
 
-    const response = await fetch('/api/admin/health', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ service }),
-    });
-    const result = await response.json();
-
-    statusSetter(result);
-    setIsTesting(false);
+    try {
+      if (service === 'ollama-embedding') {
+        // Test if the embedding model is available
+        const response = await fetch('/api/admin/health', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ service: 'ollama-embedding' }),
+        });
+        const result = await response.json();
+        
+        if (result.status === 'ok') {
+          statusSetter({ status: 'ok', message: 'Model available' });
+        } else if (result.status === 'not_found') {
+          statusSetter({ status: 'not_found', message: 'Model not found - click Pull Model' });
+        } else {
+          statusSetter({ status: 'error', message: result.message || 'Failed to test model' });
+        }
+      } else {
+        // Test individual service
+        const response = await fetch('/api/admin/health', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ service }),
+        });
+        const result = await response.json();
+        
+        if (result.status === 'ok') {
+          statusSetter({ status: 'ok', message: result.message || 'Connected' });
+        } else {
+          statusSetter({ status: 'error', message: result.message || 'Connection failed' });
+        }
+        
+        // Also refresh the overall health data
+        refetchHealth();
+      }
+    } catch (error) {
+      statusSetter({ 
+        status: 'error', 
+        message: error instanceof Error ? error.message : 'Connection failed' 
+      });
+    } finally {
+      setIsTesting(false);
+    }
   };
 
   const handlePullModel = async () => {
     setIsTesting(true);
     setEmbeddingStatus({ status: 'unknown', message: 'Initiating pull...' });
-    const response = await fetch('/api/admin/pull-model', { method: 'POST' });
-    const result = await response.json();
-    setEmbeddingStatus(result);
+    
+    try {
+      await pullModelMutation.mutateAsync('nomic-embed-text');
+      setEmbeddingStatus({ status: 'pulling_started', message: 'Model pull started' });
+    } catch (error) {
+      setEmbeddingStatus({ status: 'error', message: 'Failed to pull model' });
+    }
+    
     setIsTesting(false);
   };
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     setSaveMessage('');
-    const response = await fetch('/api/admin/config', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(config),
-    });
-    const result = await response.json();
-    setSaveMessage(result.message);
-  };
-
-  const handleLogLevelChange = async (newLevel: string) => {
-    setLoggingMessage('');
-    const response = await fetch('/api/admin/logging', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ level: newLevel }),
-    });
-    const result = await response.json();
     
-    if (result.success) {
-      setLoggingConfig(prev => prev ? { ...prev, currentLevel: newLevel } : null);
-      setLoggingMessage(result.data.message);
-    } else {
-      setLoggingMessage(result.message || 'Failed to change log level');
+    try {
+      const updateData: UpdateConfigData = {
+        qdrantUrl: config.qdrantUrl,
+        ollamaUrl: config.ollamaUrl,
+      };
+      
+      await updateConfigMutation.mutateAsync(updateData);
+      setSaveMessage('Configuration saved successfully.');
+    } catch (error) {
+      setSaveMessage('Failed to save configuration.');
     }
   };
-
 
   const getStatusIcon = (status: Status['status']) => {
     const className = 'h-5 w-5';
@@ -342,7 +382,7 @@ export default function AdminPage() {
                       <button
                         type="button"
                         onClick={handlePullModel}
-                        disabled={isTesting}
+                        disabled={isTesting || pullModelMutation.isPending}
                         className="btn bg-orange-100 text-orange-700 hover:bg-orange-200"
                       >
                         <CloudArrowDownIcon className="h-4 w-4 mr-2" />
@@ -463,16 +503,17 @@ export default function AdminPage() {
               </div>
 
               <div className="space-y-4">
-                {loggingConfig ? (
+                {availableLogLevels.length > 0 && currentLogLevel ? (
                   <div className="p-4 bg-gray-50 rounded-lg">
                     <label className="label">Current Log Level</label>
                     <div className="flex items-center gap-3 mt-2">
                       <select
-                        value={loggingConfig.currentLevel}
-                        onChange={(e) => handleLogLevelChange(e.target.value)}
+                        value={currentLogLevel}
+                        onChange={(e) => updateLogLevelMutation.mutate(e.target.value)}
                         className="input w-48"
+                        disabled={updateLogLevelMutation.isPending}
                       >
-                        {loggingConfig.availableLevels.map(level => (
+                        {availableLogLevels.map(level => (
                           <option key={level.value} value={level.value}>
                             {level.label} - {level.description}
                           </option>
@@ -481,15 +522,24 @@ export default function AdminPage() {
                       <div className="flex items-center gap-2">
                         <InformationCircleIcon className="h-4 w-4 text-gray-400" />
                         <span className="text-sm text-gray-600">
-                          Current: {loggingConfig.currentLevel.toUpperCase()}
+                          Current: {currentLogLevel.toUpperCase()}
                         </span>
                       </div>
                     </div>
                     
-                    {loggingMessage && (
+                    {updateLogLevelMutation.isSuccess && (
                       <div className="mt-3 flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-md">
                         <CheckCircleIcon className="h-4 w-4 text-green-500" />
-                        <span className="text-sm text-green-700">{loggingMessage}</span>
+                        <span className="text-sm text-green-700">Log level updated successfully!</span>
+                      </div>
+                    )}
+                    
+                    {updateLogLevelMutation.error && (
+                      <div className="mt-3 flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-md">
+                        <ExclamationCircleIcon className="h-4 w-4 text-red-500" />
+                        <span className="text-sm text-red-700">
+                          Failed to update log level: {updateLogLevelMutation.error.message}
+                        </span>
                       </div>
                     )}
                     
@@ -517,8 +567,12 @@ export default function AdminPage() {
 
             {/* Save Button */}
             <div className="flex justify-end">
-              <button type="submit" className="btn btn-primary">
-                Save Configuration
+              <button 
+                type="submit" 
+                disabled={updateConfigMutation.isPending}
+                className="btn btn-primary"
+              >
+                {updateConfigMutation.isPending ? 'Saving...' : 'Save Configuration'}
               </button>
             </div>
 
