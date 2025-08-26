@@ -1,5 +1,6 @@
 import './globals.css';
 import DashboardLayout from '@/components/DashboardLayout';
+import { QueryProvider } from '@/providers/QueryProvider';
 
 // Auto-initialize workers on app startup
 import '@/lib/startup';
@@ -20,9 +21,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body className="bg-gray-50 antialiased">
-        <DashboardLayout>
-          {children}
-        </DashboardLayout>
+        <QueryProvider>
+          <DashboardLayout>
+            {children}
+          </DashboardLayout>
+        </QueryProvider>
       </body>
     </html>
   );

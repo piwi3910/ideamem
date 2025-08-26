@@ -1,0 +1,195 @@
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+
+// Types
+export interface Project {
+  id: string;
+  name: string;
+  description?: string;
+  gitRepo: string;
+  token: string;
+  createdAt: string;
+  updatedAt: string;
+  indexedAt?: string;
+  indexStatus: 'IDLE' | 'INDEXING' | 'COMPLETED' | 'ERROR';
+  indexProgress?: number;
+  fileCount?: number;
+  vectorCount?: number;
+  lastError?: string;
+  totalQueries?: number;
+  lastQueryAt?: string;
+  queriesThisWeek?: number;
+  queriesThisMonth?: number;
+  webhookEnabled?: boolean;
+  lastWebhookAt?: string;
+  lastWebhookCommit?: string;
+  lastWebhookBranch?: string;
+  lastWebhookAuthor?: string;
+}
+
+export interface CreateProjectData {
+  name: string;
+  description?: string;
+  gitRepo: string;
+}
+
+export interface IndexingJob {
+  id: string;
+  projectId: string;
+  status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
+  progress: number;
+  startedAt?: string;
+  completedAt?: string;
+  filesProcessed?: number;
+  vectorsAdded?: number;
+  lastError?: string;
+}
+
+// Query keys
+export const projectKeys = {
+  all: ['projects'] as const,
+  lists: () => [...projectKeys.all, 'list'] as const,
+  list: (filters: string) => [...projectKeys.lists(), { filters }] as const,
+  details: () => [...projectKeys.all, 'detail'] as const,
+  detail: (id: string) => [...projectKeys.details(), id] as const,
+  indexingJobs: (projectId: string) => [...projectKeys.detail(projectId), 'indexing-jobs'] as const,
+  search: (query: string) => [...projectKeys.all, 'search', query] as const,
+};
+
+// API functions
+async function fetchProjects(): Promise<Project[]> {
+  const response = await fetch('/api/projects');
+  if (!response.ok) {
+    throw new Error(`Failed to fetch projects: ${response.statusText}`);
+  }
+  const data = await response.json();
+  return data.projects || [];
+}
+
+async function fetchProject(id: string): Promise<Project> {
+  const response = await fetch(`/api/projects/${id}`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch project: ${response.statusText}`);
+  }
+  const data = await response.json();
+  return data.project;
+}
+
+async function createProject(projectData: CreateProjectData): Promise<Project> {
+  const response = await fetch('/api/projects', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(projectData),
+  });
+  
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to create project');
+  }
+  
+  const data = await response.json();
+  return data.project;
+}
+
+async function deleteProject(id: string): Promise<void> {
+  const response = await fetch(`/api/projects/${id}`, {
+    method: 'DELETE',
+  });
+  
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to delete project');
+  }
+}
+
+async function startIndexing(projectId: string, fullReindex = false): Promise<IndexingJob> {
+  const response = await fetch(`/api/projects/${projectId}/index`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fullReindex }),
+  });
+  
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to start indexing');
+  }
+  
+  const data = await response.json();
+  return data.job;
+}
+
+async function fetchIndexingJobs(projectId: string): Promise<IndexingJob[]> {
+  const response = await fetch(`/api/projects/indexing/status?projectId=${projectId}`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch indexing jobs: ${response.statusText}`);
+  }
+  const data = await response.json();
+  return data.jobs || [];
+}
+
+// Hooks
+export function useProjects() {
+  return useQuery({
+    queryKey: projectKeys.lists(),
+    queryFn: fetchProjects,
+    staleTime: 30 * 1000, // 30 seconds
+  });
+}
+
+export function useProject(id: string) {
+  return useQuery({
+    queryKey: projectKeys.detail(id),
+    queryFn: () => fetchProject(id),
+    enabled: !!id,
+    staleTime: 60 * 1000, // 1 minute
+  });
+}
+
+export function useProjectIndexingJobs(projectId: string) {
+  return useQuery({
+    queryKey: projectKeys.indexingJobs(projectId),
+    queryFn: () => fetchIndexingJobs(projectId),
+    enabled: !!projectId,
+    refetchInterval: 2000, // Poll every 2 seconds
+    staleTime: 0, // Always consider stale for real-time updates
+  });
+}
+
+export function useCreateProject() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: createProject,
+    onSuccess: () => {
+      // Invalidate and refetch projects list
+      queryClient.invalidateQueries({ queryKey: projectKeys.lists() });
+    },
+  });
+}
+
+export function useDeleteProject() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: deleteProject,
+    onSuccess: (_, projectId) => {
+      // Remove the deleted project from cache
+      queryClient.removeQueries({ queryKey: projectKeys.detail(projectId) });
+      // Invalidate projects list
+      queryClient.invalidateQueries({ queryKey: projectKeys.lists() });
+    },
+  });
+}
+
+export function useStartIndexing() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: ({ projectId, fullReindex }: { projectId: string; fullReindex?: boolean }) =>
+      startIndexing(projectId, fullReindex),
+    onSuccess: (_, { projectId }) => {
+      // Invalidate project details and indexing jobs
+      queryClient.invalidateQueries({ queryKey: projectKeys.detail(projectId) });
+      queryClient.invalidateQueries({ queryKey: projectKeys.indexingJobs(projectId) });
+    },
+  });
+}
