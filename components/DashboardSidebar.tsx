@@ -13,6 +13,7 @@ import {
   ChevronRightIcon,
   Bars3Icon,
   XMarkIcon,
+  CogIcon,
 } from '@heroicons/react/24/outline';
 import IdeaMemLogo from './IdeaMemLogo';
 
@@ -143,7 +144,7 @@ export default function DashboardSidebar({
           })}
         </nav>
 
-        {/* Footer */}
+          {/* Footer */}
         <div className="border-t border-gray-200 p-4 flex-shrink-0">
           {!collapsed ? (
             <div className="text-xs text-gray-500 space-y-1">
