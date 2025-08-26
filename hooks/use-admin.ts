@@ -307,6 +307,27 @@ async function updateLogLevel(level: string): Promise<void> {
   }
 }
 
+async function testServiceConnection(service: 'qdrant' | 'ollama' | 'ollama-embedding'): Promise<{
+  status: 'ok' | 'error' | 'not_found';
+  message: string;
+}> {
+  const response = await fetch('/api/admin/health', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ service }),
+  });
+  
+  if (!response.ok) {
+    throw new Error(`Failed to test ${service}: ${response.statusText}`);
+  }
+  
+  const result = await response.json();
+  return {
+    status: result.status,
+    message: result.message || (result.status === 'ok' ? 'Connected' : 'Connection failed'),
+  };
+}
+
 // Hooks
 export function useServiceHealth() {
   return useQuery({
@@ -389,6 +410,18 @@ export function useUpdateLogLevel() {
     mutationFn: updateLogLevel,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: adminKeys.currentLogLevel() });
+    },
+  });
+}
+
+export function useTestServiceConnection() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: testServiceConnection,
+    onSuccess: () => {
+      // Refresh service health after successful test
+      queryClient.invalidateQueries({ queryKey: adminKeys.health() });
     },
   });
 }

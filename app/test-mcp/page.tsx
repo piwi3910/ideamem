@@ -11,6 +11,9 @@ import {
   ArrowPathIcon,
 } from '@heroicons/react/24/outline';
 
+// Import React Query hooks
+import { useMcpToolCall, useListMcpTools } from '@/hooks/use-mcp';
+
 const defaultIngestParams = {
   content: `export interface User {\n  id: string;\n  email: string;\n  name: string;\n}\n\nexport function validateUser(user: User): boolean {\n  return user.email.includes('@') && user.name.length > 0;\n}\n\nexport async function createUser(userData: Omit<User, 'id'>): Promise<User> {\n  const user = {\n    id: crypto.randomUUID(),\n    ...userData\n  };\n  \n  if (!validateUser(user)) {\n    throw new Error('Invalid user data');\n  }\n  \n  return user;\n}`,
   source: 'src/models/User.ts',
@@ -31,6 +34,11 @@ const defaultRetrieveParams = {
 };
 
 export default function McpTestPage() {
+  // React Query hooks
+  const toolCallMutation = useMcpToolCall();
+  const listToolsMutation = useListMcpTools();
+
+  // Local state for form inputs
   const [ingestParams, setIngestParams] = useState(JSON.stringify(defaultIngestParams, null, 2));
   const [retrieveParams, setRetrieveParams] = useState(
     JSON.stringify(defaultRetrieveParams, null, 2)
@@ -43,54 +51,44 @@ export default function McpTestPage() {
     )
   );
   const [response, setResponse] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = async (toolName: string, params: string) => {
-    setIsLoading(true);
+  // Derive loading state from mutations
+  const isLoading = toolCallMutation.isPending || listToolsMutation.isPending;
+
+  const handleSubmit = (toolName: string, params: string) => {
     setResponse('');
+    
     try {
-      const res = await fetch('/api/mcp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          id: Math.random().toString(36).substring(7),
-          method: 'tools/call',
-          params: {
-            name: toolName,
-            arguments: JSON.parse(params),
+      const parsedParams = JSON.parse(params);
+      toolCallMutation.mutate(
+        { name: toolName, arguments: parsedParams },
+        {
+          onSuccess: (data) => {
+            setResponse(JSON.stringify(data, null, 2));
           },
-        }),
-      });
-      const data = await res.json();
-      setResponse(JSON.stringify(data, null, 2));
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
-      setResponse(JSON.stringify({ error: errorMessage }, null, 2));
+          onError: (error) => {
+            const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+            setResponse(JSON.stringify({ error: errorMessage }, null, 2));
+          },
+        }
+      );
+    } catch (parseError) {
+      setResponse(JSON.stringify({ error: 'Invalid JSON in parameters' }, null, 2));
     }
-    setIsLoading(false);
   };
 
-  const handleListTools = async () => {
-    setIsLoading(true);
+  const handleListTools = () => {
     setResponse('');
-    try {
-      const res = await fetch('/api/mcp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          id: Math.random().toString(36).substring(7),
-          method: 'tools/list',
-        }),
-      });
-      const data = await res.json();
-      setResponse(JSON.stringify(data, null, 2));
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
-      setResponse(JSON.stringify({ error: errorMessage }, null, 2));
-    }
-    setIsLoading(false);
+    
+    listToolsMutation.mutate(undefined, {
+      onSuccess: (data) => {
+        setResponse(JSON.stringify(data, null, 2));
+      },
+      onError: (error) => {
+        const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+        setResponse(JSON.stringify({ error: errorMessage }, null, 2));
+      },
+    });
   };
 
   const copyToClipboard = (text: string) => {

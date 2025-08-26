@@ -1,4 +1,16 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import React from 'react';
+import {
+  CheckCircleIcon,
+  ExclamationCircleIcon,
+  ClockIcon,
+  ArrowPathIcon,
+  DocumentTextIcon,
+  GlobeAltIcon,
+  CodeBracketIcon,
+  BookOpenIcon,
+} from '@heroicons/react/24/outline';
+import { twMerge } from 'tailwind-merge';
 
 // Types
 export interface DocumentationRepository {
@@ -81,6 +93,109 @@ export interface RelationshipGraph {
     strength: number;
     type: 'similarity' | 'reference' | 'category';
   }>;
+}
+
+// Display interface that matches the existing UI
+export interface DocRepository {
+  id: string;
+  name: string;
+  sourceType: 'git' | 'llmstxt' | 'website';
+  gitUrl?: string;
+  url?: string;
+  branch?: string;
+  description?: string;
+  languages: string[];
+  lastIndexed?: string;
+  status: 'pending' | 'indexing' | 'completed' | 'error';
+  documentCount: number;
+  lastError?: string;
+}
+
+// Mapping and utility functions
+export function mapRepositoryForDisplay(repo: DocumentationRepository): DocRepository {
+  const status = repo.indexingProgress > 0 && repo.indexingProgress < 100 ? 'indexing' :
+                 repo.lastError ? 'error' :
+                 repo.totalDocuments > 0 ? 'completed' : 'pending';
+  
+  return {
+    id: repo.id,
+    name: repo.name,
+    sourceType: repo.type,
+    gitUrl: repo.type === 'git' ? repo.url : undefined,
+    url: repo.type !== 'git' ? repo.url : undefined,
+    branch: repo.metadata?.branch,
+    description: repo.description,
+    languages: repo.languages,
+    lastIndexed: repo.lastIndexedAt,
+    status,
+    documentCount: repo.totalDocuments,
+    lastError: repo.lastError,
+  };
+}
+
+export function mapRepositoryForAPI(repo: DocRepository): Partial<DocumentationRepository> {
+  return {
+    id: repo.id,
+    name: repo.name,
+    description: repo.description,
+    url: repo.gitUrl || repo.url || '',
+    languages: repo.languages,
+    metadata: repo.branch ? { branch: repo.branch } : undefined,
+  };
+}
+
+export function getStatusIcon(status: 'pending' | 'indexing' | 'completed' | 'error'): React.ReactElement {
+  const className = 'h-5 w-5';
+  switch (status) {
+    case 'completed':
+      return React.createElement(CheckCircleIcon, { className: twMerge(className, 'text-green-500') });
+    case 'error':
+      return React.createElement(ExclamationCircleIcon, { className: twMerge(className, 'text-red-500') });
+    case 'indexing':
+      return React.createElement(ArrowPathIcon, { className: twMerge(className, 'text-blue-500 animate-spin') });
+    default:
+      return React.createElement(ClockIcon, { className: twMerge(className, 'text-gray-400') });
+  }
+}
+
+export function getStatusColor(status: 'pending' | 'indexing' | 'completed' | 'error'): string {
+  switch (status) {
+    case 'completed':
+      return 'text-green-600';
+    case 'error':
+      return 'text-red-600';
+    case 'indexing':
+      return 'text-blue-600';
+    default:
+      return 'text-gray-500';
+  }
+}
+
+export function getSourceTypeIcon(sourceType: 'git' | 'llmstxt' | 'website'): React.ReactElement {
+  const className = 'h-5 w-5 text-indigo-600';
+  switch (sourceType) {
+    case 'git':
+      return React.createElement(CodeBracketIcon, { className });
+    case 'llmstxt':
+      return React.createElement(DocumentTextIcon, { className });
+    case 'website':
+      return React.createElement(GlobeAltIcon, { className });
+    default:
+      return React.createElement(BookOpenIcon, { className });
+  }
+}
+
+export function getSourceTypeLabel(sourceType: 'git' | 'llmstxt' | 'website'): string {
+  switch (sourceType) {
+    case 'git':
+      return 'Git Repository';
+    case 'llmstxt':
+      return 'llms.txt File';
+    case 'website':
+      return 'Website';
+    default:
+      return 'Documentation Source';
+  }
 }
 
 // Query keys

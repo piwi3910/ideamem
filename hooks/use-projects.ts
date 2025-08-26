@@ -238,12 +238,14 @@ export function useRegenerateToken() {
 }
 
 async function fetchIndexingJob(projectId: string): Promise<IndexingJob | null> {
-  const response = await fetch('/api/projects/indexing/status');
+  const response = await fetch(`/api/projects/indexing/status?projectId=${projectId}`);
   if (!response.ok) {
     throw new Error(`Failed to fetch indexing job: ${response.statusText}`);
   }
   const data = await response.json();
-  return data.jobs[projectId] || null;
+  // Return the first job for this specific project, or null if no jobs
+  const jobs = data.jobs || [];
+  return jobs.length > 0 ? jobs[0] : null;
 }
 
 export function useIndexingJob(projectId: string) {

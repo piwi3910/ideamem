@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import {
   PlusIcon,
   PencilIcon,
@@ -11,18 +11,14 @@ import {
 } from '@heroicons/react/24/outline';
 import { Dialog } from '@headlessui/react';
 
-interface Preference {
-  id: string;
-  score?: number;
-  payload: {
-    content: string;
-    source: string;
-    type: 'user_preference';
-    language: 'markdown';
-    scope: 'project';
-    project_id: string;
-  };
-}
+// Import React Query hooks
+import {
+  useProjectPreferences,
+  useCreateProjectPreference,
+  useUpdateProjectPreference,
+  useDeleteProjectPreference,
+  type Preference,
+} from '@/hooks/use-project-preferences';
 
 interface ProjectPreferencesManagerProps {
   projectId: string;
@@ -31,79 +27,45 @@ interface ProjectPreferencesManagerProps {
 }
 
 export default function ProjectPreferencesManager({ projectId, isOpen, onClose }: ProjectPreferencesManagerProps) {
-  const [preferences, setPreferences] = useState<Preference[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  // React Query hooks
+  const { data: preferences = [], isLoading: loading, error: fetchError } = useProjectPreferences(projectId);
+  const createPreferenceMutation = useCreateProjectPreference(projectId);
+  const updatePreferenceMutation = useUpdateProjectPreference(projectId);
+  const deletePreferenceMutation = useDeleteProjectPreference(projectId);
+
+  // Local UI state
   const [editingPreference, setEditingPreference] = useState<Preference | null>(null);
   const [newPreference, setNewPreference] = useState({ source: '', content: '' });
   const [showAddForm, setShowAddForm] = useState(false);
-  const [saveMessage, setSaveMessage] = useState('');
 
-  useEffect(() => {
-    if (isOpen && projectId) {
-      fetchPreferences();
-    }
-  }, [isOpen, projectId]);
-
-  const fetchPreferences = async () => {
-    try {
-      setLoading(true);
-      setError('');
-      const response = await fetch(`/api/projects/${projectId}/preferences`);
-      if (!response.ok) throw new Error('Failed to fetch preferences');
-      const data = await response.json();
-      setPreferences(data.preferences || []);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch preferences');
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Derive error and success messages from mutations
+  const error = fetchError?.message || createPreferenceMutation.error?.message || 
+                updatePreferenceMutation.error?.message || deletePreferenceMutation.error?.message || '';
+                
+  const saveMessage = createPreferenceMutation.isSuccess ? 'Preference added successfully!' :
+                     updatePreferenceMutation.isSuccess ? 'Preference updated successfully!' :
+                     deletePreferenceMutation.isSuccess ? 'Preference deleted successfully!' : '';
 
   const handleSave = async (source: string, content: string, isEdit: boolean = false) => {
-    try {
-      const response = await fetch(`/api/projects/${projectId}/preferences`, {
-        method: isEdit ? 'PUT' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ source, content }),
+    if (isEdit) {
+      updatePreferenceMutation.mutate({ source, content }, {
+        onSuccess: () => {
+          setEditingPreference(null);
+        }
       });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Failed to save preference');
-      }
-
-      setSaveMessage(isEdit ? 'Preference updated successfully!' : 'Preference added successfully!');
-      setTimeout(() => setSaveMessage(''), 3000);
-      
-      setEditingPreference(null);
-      setShowAddForm(false);
-      setNewPreference({ source: '', content: '' });
-      await fetchPreferences();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save preference');
+    } else {
+      createPreferenceMutation.mutate({ source, content }, {
+        onSuccess: () => {
+          setShowAddForm(false);
+          setNewPreference({ source: '', content: '' });
+        }
+      });
     }
   };
 
   const handleDelete = async (source: string) => {
     if (!confirm('Are you sure you want to delete this preference?')) return;
-
-    try {
-      const response = await fetch(`/api/projects/${projectId}/preferences?source=${encodeURIComponent(source)}`, {
-        method: 'DELETE',
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Failed to delete preference');
-      }
-
-      setSaveMessage('Preference deleted successfully!');
-      setTimeout(() => setSaveMessage(''), 3000);
-      await fetchPreferences();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete preference');
-    }
+    deletePreferenceMutation.mutate(source);
   };
 
   return (

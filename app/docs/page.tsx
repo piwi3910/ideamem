@@ -16,58 +16,22 @@ import {
 } from '@heroicons/react/24/outline';
 import { twMerge } from 'tailwind-merge';
 
-// Import React Query hooks
-import { useDocumentationRepositories, useCreateRepository, useUpdateRepository, useDeleteRepository, type DocumentationRepository } from '@/hooks/use-documentation';
+// Import React Query hooks and utility functions
+import { 
+  useDocumentationRepositories, 
+  useCreateRepository, 
+  useUpdateRepository, 
+  useDeleteRepository,
+  mapRepositoryForDisplay,
+  mapRepositoryForAPI,
+  getStatusIcon,
+  getStatusColor,
+  getSourceTypeIcon,
+  getSourceTypeLabel,
+  type DocumentationRepository,
+  type DocRepository 
+} from '@/hooks/use-documentation';
 
-// Define display interface that matches the existing UI
-interface DocRepository {
-  id: string;
-  name: string;
-  sourceType: 'git' | 'llmstxt' | 'website';
-  gitUrl?: string;
-  url?: string;
-  branch?: string;
-  description?: string;
-  languages: string[];
-  lastIndexed?: string;
-  status: 'pending' | 'indexing' | 'completed' | 'error';
-  documentCount: number;
-  lastError?: string;
-}
-
-// Map backend DocumentationRepository to display DocRepository
-function mapRepositoryForDisplay(repo: DocumentationRepository): DocRepository {
-  const status = repo.indexingProgress > 0 && repo.indexingProgress < 100 ? 'indexing' :
-                 repo.lastError ? 'error' :
-                 repo.totalDocuments > 0 ? 'completed' : 'pending';
-  
-  return {
-    id: repo.id,
-    name: repo.name,
-    sourceType: repo.type,
-    gitUrl: repo.type === 'git' ? repo.url : undefined,
-    url: repo.type !== 'git' ? repo.url : undefined,
-    branch: repo.metadata?.branch,
-    description: repo.description,
-    languages: repo.languages,
-    lastIndexed: repo.lastIndexedAt,
-    status,
-    documentCount: repo.totalDocuments,
-    lastError: repo.lastError,
-  };
-}
-
-// Map display DocRepository back to DocumentationRepository for updates
-function mapRepositoryForAPI(repo: DocRepository): Partial<DocumentationRepository> {
-  return {
-    id: repo.id,
-    name: repo.name,
-    description: repo.description,
-    url: repo.gitUrl || repo.url || '',
-    languages: repo.languages,
-    metadata: repo.branch ? { branch: repo.branch } : undefined,
-  };
-}
 
 
 export default function DocsPage() {
@@ -134,60 +98,6 @@ export default function DocsPage() {
     }
 
     deleteRepoMutation.mutate(repo.id);
-  };
-
-  const getStatusIcon = (status: 'pending' | 'indexing' | 'completed' | 'error') => {
-    const className = 'h-5 w-5';
-    switch (status) {
-      case 'completed':
-        return <CheckCircleIcon className={twMerge(className, 'text-green-500')} />;
-      case 'error':
-        return <ExclamationCircleIcon className={twMerge(className, 'text-red-500')} />;
-      case 'indexing':
-        return <ArrowPathIcon className={twMerge(className, 'text-blue-500 animate-spin')} />;
-      default:
-        return <ClockIcon className={twMerge(className, 'text-gray-400')} />;
-    }
-  };
-
-  const getStatusColor = (status: 'pending' | 'indexing' | 'completed' | 'error') => {
-    switch (status) {
-      case 'completed':
-        return 'text-green-600';
-      case 'error':
-        return 'text-red-600';
-      case 'indexing':
-        return 'text-blue-600';
-      default:
-        return 'text-gray-500';
-    }
-  };
-
-  const getSourceTypeIcon = (sourceType: 'git' | 'llmstxt' | 'website') => {
-    const className = 'h-5 w-5 text-indigo-600';
-    switch (sourceType) {
-      case 'git':
-        return <CodeBracketIcon className={className} />;
-      case 'llmstxt':
-        return <DocumentTextIcon className={className} />;
-      case 'website':
-        return <GlobeAltIcon className={className} />;
-      default:
-        return <BookOpenIcon className={className} />;
-    }
-  };
-
-  const getSourceTypeLabel = (sourceType: 'git' | 'llmstxt' | 'website') => {
-    switch (sourceType) {
-      case 'git':
-        return 'Git Repository';
-      case 'llmstxt':
-        return 'llms.txt File';
-      case 'website':
-        return 'Website';
-      default:
-        return 'Documentation Source';
-    }
   };
 
   return (

@@ -29,8 +29,10 @@ import {
   useProjectIndexingJobs,
   type CreateProjectData 
 } from '@/hooks/use-projects';
+import { useSearch, type SearchResult } from '@/hooks/use-search';
 import { useUIStore } from '@/store/ui-store';
 import SearchAutoComplete from '../../components/SearchAutoComplete';
+import ProjectIndexingStatus from '../../components/ProjectIndexingStatus';
 
 export default function ProjectsPage() {
   // React Query hooks for data fetching
@@ -38,6 +40,7 @@ export default function ProjectsPage() {
   const createProjectMutation = useCreateProject();
   const deleteProjectMutation = useDeleteProject();
   const startIndexingMutation = useStartIndexing();
+  const searchMutation = useSearch();
 
   // Zustand store for UI state
   const {
@@ -65,9 +68,11 @@ export default function ProjectsPage() {
   });
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<any[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
-  const [selectedResult, setSelectedResult] = useState<any>(null);
+  const [selectedResult, setSelectedResult] = useState<SearchResult | null>(null);
+
+  // Derive search state from the mutation
+  const searchResults = searchMutation.data?.results || [];
+  const isSearching = searchMutation.isPending;
 
   // Form validation
   const validateForm = (): boolean => {
@@ -131,60 +136,22 @@ export default function ProjectsPage() {
   };
 
   // Search handler
-  const handleSearch = async () => {
+  const handleSearch = () => {
     if (!searchQuery.trim()) return;
 
-    setIsSearching(true);
-    try {
-      const response = await fetch('/api/search', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          query: searchQuery,
-          limit: 10,
-        }),
-      });
-
-      if (!response.ok) throw new Error('Search failed');
-
-      const data = await response.json();
-      setSearchResults(data.results || []);
-      addToSearchHistory(searchQuery, data.results?.length || 0);
-    } catch (error) {
-      console.error('Search failed:', error);
-      setSearchResults([]);
-    } finally {
-      setIsSearching(false);
-    }
-  };
-
-  const ProjectIndexingStatus = ({ project }: { project: any }) => {
-    const { data: indexingJobs = [] } = useProjectIndexingJobs(project.id);
-    const currentJob = indexingJobs.find((job: any) => job.status === 'RUNNING');
-    
-    if (currentJob) {
-      return (
-        <div className="flex items-center gap-2">
-          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
-          <span className="text-sm text-blue-600">
-            Indexing {currentJob.progress}%
-          </span>
-        </div>
-      );
-    }
-
-    return (
-      <div className="flex items-center gap-2">
-        <div className={`w-2 h-2 rounded-full ${
-          project.indexStatus === 'COMPLETED' ? 'bg-green-500' :
-          project.indexStatus === 'ERROR' ? 'bg-red-500' : 'bg-gray-400'
-        }`} />
-        <span className="text-sm text-gray-600 capitalize">
-          {project.indexStatus.toLowerCase()}
-        </span>
-      </div>
+    searchMutation.mutate(
+      { query: searchQuery, limit: 10 },
+      {
+        onSuccess: (data) => {
+          addToSearchHistory(searchQuery, data.results?.length || 0);
+        },
+        onError: (error) => {
+          console.error('Search failed:', error);
+        },
+      }
     );
   };
+
 
   if (isLoading) {
     return (

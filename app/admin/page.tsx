@@ -25,6 +25,7 @@ import {
   useAvailableLogLevels,
   useCurrentLogLevel,
   useUpdateLogLevel,
+  useTestServiceConnection,
   type UpdateConfigData,
 } from '@/hooks/use-admin';
 
@@ -68,6 +69,7 @@ export default function AdminPage() {
   const updateConfigMutation = useUpdateConfig();
   const pullModelMutation = usePullOllamaModel();
   const updateLogLevelMutation = useUpdateLogLevel();
+  const testServiceMutation = useTestServiceConnection();
 
   const [configLoaded, setConfigLoaded] = useState(false);
 
@@ -100,59 +102,45 @@ export default function AdminPage() {
     }
   }, [serviceHealth, setQdrantStatus, setOllamaStatus]);
 
-  const handleTestConnection = async (service: 'qdrant' | 'ollama' | 'ollama-embedding') => {
-    setIsTesting(true);
+  const handleTestConnection = (service: 'qdrant' | 'ollama' | 'ollama-embedding') => {
     const statusSetter = {
       qdrant: setQdrantStatus,
       ollama: setOllamaStatus,
       'ollama-embedding': setEmbeddingStatus,
     }[service];
 
+    setIsTesting(true);
     statusSetter({ status: 'unknown', message: 'Testing...' });
 
-    try {
-      if (service === 'ollama-embedding') {
-        // Test if the embedding model is available
-        const response = await fetch('/api/admin/health', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ service: 'ollama-embedding' }),
-        });
-        const result = await response.json();
-        
+    testServiceMutation.mutate(service, {
+      onSuccess: (result) => {
         if (result.status === 'ok') {
-          statusSetter({ status: 'ok', message: 'Model available' });
+          statusSetter({ 
+            status: 'ok', 
+            message: service === 'ollama-embedding' ? 'Model available' : result.message 
+          });
         } else if (result.status === 'not_found') {
-          statusSetter({ status: 'not_found', message: 'Model not found - click Pull Model' });
+          statusSetter({ 
+            status: 'not_found', 
+            message: 'Model not found - click Pull Model' 
+          });
         } else {
-          statusSetter({ status: 'error', message: result.message || 'Failed to test model' });
+          statusSetter({ 
+            status: 'error', 
+            message: result.message || 'Connection failed' 
+          });
         }
-      } else {
-        // Test individual service
-        const response = await fetch('/api/admin/health', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ service }),
+      },
+      onError: (error) => {
+        statusSetter({ 
+          status: 'error', 
+          message: error instanceof Error ? error.message : 'Connection failed' 
         });
-        const result = await response.json();
-        
-        if (result.status === 'ok') {
-          statusSetter({ status: 'ok', message: result.message || 'Connected' });
-        } else {
-          statusSetter({ status: 'error', message: result.message || 'Connection failed' });
-        }
-        
-        // Also refresh the overall health data
-        refetchHealth();
+      },
+      onSettled: () => {
+        setIsTesting(false);
       }
-    } catch (error) {
-      statusSetter({ 
-        status: 'error', 
-        message: error instanceof Error ? error.message : 'Connection failed' 
-      });
-    } finally {
-      setIsTesting(false);
-    }
+    });
   };
 
   const handlePullModel = async () => {

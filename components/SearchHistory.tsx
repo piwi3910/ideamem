@@ -1,15 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import {
-  SearchHistoryManager,
   SearchHistoryItem,
   SavedSearch,
-  SearchAnalytics,
-  SearchTrend,
   formatSearchDuration,
   formatRelativeTime,
 } from '../lib/search-history';
+import { useSearchHistoryStore } from '../stores/search-history-store';
 
 export interface SearchHistoryProps {
   onSearchSelect?: (query: string, filters?: any) => void;
@@ -24,55 +22,42 @@ export default function SearchHistory({
   className = '',
   theme = 'light',
 }: SearchHistoryProps) {
-  const [historyManager] = useState(() => new SearchHistoryManager());
-  const [activeTab, setActiveTab] = useState<'history' | 'saved' | 'analytics'>('history');
-  const [searchHistory, setSearchHistory] = useState<SearchHistoryItem[]>([]);
-  const [savedSearches, setSavedSearches] = useState<SavedSearch[]>([]);
-  const [analytics, setAnalytics] = useState<SearchAnalytics | null>(null);
-  const [trends, setTrends] = useState<SearchTrend[]>([]);
-
-  const [historyFilters, setHistoryFilters] = useState({
-    searchType: '',
-    dateRange: '',
-    query: '',
-  });
-
-  const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
-  const [showCreateSaved, setShowCreateSaved] = useState(false);
-  const [newSavedSearch, setNewSavedSearch] = useState({
-    name: '',
-    description: '',
-    tags: '' as string,
-  });
+  // Zustand store
+  const {
+    activeTab,
+    historyFilters,
+    selectedItems,
+    showCreateSaved,
+    newSavedSearch,
+    searchHistory,
+    savedSearches,
+    analytics,
+    trends,
+    setActiveTab,
+    setHistoryFilters,
+    setSelectedItems,
+    toggleItemSelection,
+    clearSelection,
+    setShowCreateSaved,
+    setNewSavedSearch,
+    loadData,
+    bookmarkSearch,
+    deleteHistoryItem,
+    deleteSavedSearch,
+    bulkDelete,
+    createSavedSearch,
+    executeSavedSearch,
+  } = useSearchHistoryStore();
 
   const themeClasses = {
     light: 'bg-white text-gray-900 border-gray-200',
     dark: 'bg-gray-800 text-gray-100 border-gray-700',
   };
 
-  // Load data on mount and when tab changes
+  // Load data on mount
   useEffect(() => {
     loadData();
-  }, [activeTab]);
-
-  const loadData = () => {
-    if (activeTab === 'history') {
-      const history = historyManager.getHistory({
-        limit: 100,
-        searchType: historyFilters.searchType || undefined,
-        query: historyFilters.query || undefined,
-      });
-      setSearchHistory(history);
-    } else if (activeTab === 'saved') {
-      const saved = historyManager.getSavedSearches();
-      setSavedSearches(saved);
-    } else if (activeTab === 'analytics') {
-      const analyticsData = historyManager.getAnalytics();
-      const trendsData = historyManager.getTrends(30);
-      setAnalytics(analyticsData);
-      setTrends(trendsData);
-    }
-  };
+  }, [loadData]);
 
   const handleHistoryItemSelect = (item: SearchHistoryItem) => {
     onSearchSelect?.(item.query, item.filters);
@@ -80,57 +65,27 @@ export default function SearchHistory({
 
   const handleSavedSearchExecute = (savedSearch: SavedSearch) => {
     onSavedSearchExecute?.(savedSearch);
-    historyManager.executeSavedSearch(savedSearch.id, 0); // Will be updated with actual results
-    loadData();
+    executeSavedSearch(savedSearch);
   };
 
   const handleBookmarkToggle = (id: string, bookmarked: boolean) => {
-    historyManager.bookmarkSearch(id, bookmarked);
-    loadData();
+    bookmarkSearch(id, bookmarked);
   };
 
   const handleDeleteHistory = (id: string) => {
-    historyManager.deleteHistoryItem(id);
-    loadData();
+    deleteHistoryItem(id);
   };
 
   const handleDeleteSaved = (id: string) => {
-    historyManager.deleteSavedSearch(id);
-    loadData();
+    deleteSavedSearch(id);
   };
 
   const handleBulkDelete = () => {
-    selectedItems.forEach((id) => {
-      if (activeTab === 'history') {
-        historyManager.deleteHistoryItem(id);
-      } else if (activeTab === 'saved') {
-        historyManager.deleteSavedSearch(id);
-      }
-    });
-    setSelectedItems(new Set());
-    loadData();
+    bulkDelete();
   };
 
   const handleCreateSavedSearch = () => {
-    if (!newSavedSearch.name.trim()) return;
-
-    // This would typically be populated from a selected history item
-    const mockSavedSearch = {
-      name: newSavedSearch.name,
-      query: 'example query', // Would come from selected history item
-      filters: {},
-      searchType: 'semantic' as const,
-      description: newSavedSearch.description,
-      tags: newSavedSearch.tags
-        .split(',')
-        .map((t) => t.trim())
-        .filter(Boolean),
-    };
-
-    historyManager.saveSearch(mockSavedSearch);
-    setNewSavedSearch({ name: '', description: '', tags: '' });
-    setShowCreateSaved(false);
-    loadData();
+    createSavedSearch();
   };
 
   const renderTabButton = (tab: typeof activeTab, label: string, icon: string) => (
@@ -226,7 +181,7 @@ export default function SearchHistory({
                 Delete Selected
               </button>
               <button
-                onClick={() => setSelectedItems(new Set())}
+                onClick={clearSelection}
                 className="px-3 py-1 bg-gray-600 text-white text-sm rounded hover:bg-gray-700"
               >
                 Clear Selection
@@ -249,15 +204,7 @@ export default function SearchHistory({
                     <input
                       type="checkbox"
                       checked={selectedItems.has(item.id)}
-                      onChange={(e) => {
-                        const newSelected = new Set(selectedItems);
-                        if (e.target.checked) {
-                          newSelected.add(item.id);
-                        } else {
-                          newSelected.delete(item.id);
-                        }
-                        setSelectedItems(newSelected);
-                      }}
+                      onChange={() => toggleItemSelection(item.id)}
                       className="mt-1"
                     />
 

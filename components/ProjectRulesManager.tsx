@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import {
   PlusIcon,
   PencilIcon,
@@ -11,18 +11,14 @@ import {
 } from '@heroicons/react/24/outline';
 import { Dialog } from '@headlessui/react';
 
-interface Rule {
-  id: string;
-  score?: number;
-  payload: {
-    content: string;
-    source: string;
-    type: 'rule';
-    language: 'markdown';
-    scope: 'project';
-    project_id: string;
-  };
-}
+// Import React Query hooks
+import {
+  useProjectRules,
+  useCreateProjectRule,
+  useUpdateProjectRule,
+  useDeleteProjectRule,
+  type Rule,
+} from '@/hooks/use-project-rules';
 
 interface ProjectRulesManagerProps {
   projectId: string;
@@ -31,79 +27,45 @@ interface ProjectRulesManagerProps {
 }
 
 export default function ProjectRulesManager({ projectId, isOpen, onClose }: ProjectRulesManagerProps) {
-  const [rules, setRules] = useState<Rule[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  // React Query hooks
+  const { data: rules = [], isLoading: loading, error: fetchError } = useProjectRules(projectId);
+  const createRuleMutation = useCreateProjectRule(projectId);
+  const updateRuleMutation = useUpdateProjectRule(projectId);
+  const deleteRuleMutation = useDeleteProjectRule(projectId);
+
+  // Local UI state
   const [editingRule, setEditingRule] = useState<Rule | null>(null);
   const [newRule, setNewRule] = useState({ source: '', content: '' });
   const [showAddForm, setShowAddForm] = useState(false);
-  const [saveMessage, setSaveMessage] = useState('');
 
-  useEffect(() => {
-    if (isOpen && projectId) {
-      fetchRules();
-    }
-  }, [isOpen, projectId]);
-
-  const fetchRules = async () => {
-    try {
-      setLoading(true);
-      setError('');
-      const response = await fetch(`/api/projects/${projectId}/rules`);
-      if (!response.ok) throw new Error('Failed to fetch rules');
-      const data = await response.json();
-      setRules(data.rules || []);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch rules');
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Derive error and success messages from mutations
+  const error = fetchError?.message || createRuleMutation.error?.message || 
+                updateRuleMutation.error?.message || deleteRuleMutation.error?.message || '';
+                
+  const saveMessage = createRuleMutation.isSuccess ? 'Rule added successfully!' :
+                     updateRuleMutation.isSuccess ? 'Rule updated successfully!' :
+                     deleteRuleMutation.isSuccess ? 'Rule deleted successfully!' : '';
 
   const handleSave = async (source: string, content: string, isEdit: boolean = false) => {
-    try {
-      const response = await fetch(`/api/projects/${projectId}/rules`, {
-        method: isEdit ? 'PUT' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ source, content }),
+    if (isEdit) {
+      updateRuleMutation.mutate({ source, content }, {
+        onSuccess: () => {
+          setEditingRule(null);
+        }
       });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Failed to save rule');
-      }
-
-      setSaveMessage(isEdit ? 'Rule updated successfully!' : 'Rule added successfully!');
-      setTimeout(() => setSaveMessage(''), 3000);
-      
-      setEditingRule(null);
-      setShowAddForm(false);
-      setNewRule({ source: '', content: '' });
-      await fetchRules();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save rule');
+    } else {
+      createRuleMutation.mutate({ source, content }, {
+        onSuccess: () => {
+          setShowAddForm(false);
+          setNewRule({ source: '', content: '' });
+        }
+      });
     }
   };
 
   const handleDelete = async (source: string) => {
     if (!confirm('Are you sure you want to delete this rule?')) return;
-
-    try {
-      const response = await fetch(`/api/projects/${projectId}/rules?source=${encodeURIComponent(source)}`, {
-        method: 'DELETE',
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Failed to delete rule');
-      }
-
-      setSaveMessage('Rule deleted successfully!');
-      setTimeout(() => setSaveMessage(''), 3000);
-      await fetchRules();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete rule');
-    }
+    deleteRuleMutation.mutate(source);
   };
 
   return (

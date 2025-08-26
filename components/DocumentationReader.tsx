@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { useDocumentationContent } from '@/hooks/use-documentation-content';
 
 export interface DocumentationContent {
   id: string;
@@ -410,49 +411,40 @@ export default function DocumentationReader({
   );
 }
 
-// Utility component for standalone usage
+// Utility component for standalone usage with React Query
 export function DocumentationReaderContainer({
   documentId,
   ...props
 }: Omit<DocumentationReaderProps, 'document'> & { documentId: string }) {
-  const [document, setDocument] = useState<DocumentationContent | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    // This would typically fetch from your API
-    const fetchDocument = async () => {
-      try {
-        // Placeholder for actual API call
-        const mockDocument: DocumentationContent = {
-          id: documentId,
-          title: 'Loading...',
-          content: 'Loading document content...',
-          type: 'text',
-          source: 'API',
-          headings: [],
-        };
-        setDocument(mockDocument);
-      } catch (error) {
-        console.error('Failed to fetch document:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchDocument();
-  }, [documentId]);
+  const { data: document, isLoading: loading, error } = useDocumentationContent(documentId);
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        <span className="ml-2 text-gray-600">Loading document...</span>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <div className="text-red-600 mb-2">Failed to load document</div>
+          <p className="text-gray-500 text-sm">
+            {error instanceof Error ? error.message : 'Unknown error occurred'}
+          </p>
+        </div>
       </div>
     );
   }
 
   if (!document) {
     return (
-      <div className="flex items-center justify-center h-64 text-gray-500">Document not found</div>
+      <div className="flex items-center justify-center h-64 text-gray-500">
+        Document not found
+      </div>
     );
   }
 
