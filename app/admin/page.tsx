@@ -11,6 +11,8 @@ import {
   CloudArrowDownIcon,
   DocumentIcon,
   CalendarIcon,
+  CogIcon,
+  InformationCircleIcon,
 } from '@heroicons/react/24/outline';
 import { twMerge } from 'tailwind-merge';
 
@@ -20,6 +22,12 @@ interface AppConfig {
   ollamaUrl: string;
   docReindexEnabled: boolean;
   docReindexInterval: number; // days
+}
+
+interface LoggingConfig {
+  currentLevel: string;
+  availableLevels: Array<{ value: string; label: string; description: string }>;
+  logLevels: Record<string, number>;
 }
 
 interface Status {
@@ -43,6 +51,8 @@ export default function AdminPage() {
     message: '',
   });
   const [isTesting, setIsTesting] = useState(false);
+  const [loggingConfig, setLoggingConfig] = useState<LoggingConfig | null>(null);
+  const [loggingMessage, setLoggingMessage] = useState('');
 
   useEffect(() => {
     fetch('/api/admin/config')
@@ -60,6 +70,19 @@ export default function AdminPage() {
       })
       .catch(() => {
         setConfigLoaded(true);
+      });
+  }, []);
+
+  useEffect(() => {
+    fetch('/api/admin/logging')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success) {
+          setLoggingConfig(data.data);
+        }
+      })
+      .catch((error) => {
+        console.error('Failed to load logging configuration:', error);
       });
   }, []);
 
@@ -103,6 +126,23 @@ export default function AdminPage() {
     });
     const result = await response.json();
     setSaveMessage(result.message);
+  };
+
+  const handleLogLevelChange = async (newLevel: string) => {
+    setLoggingMessage('');
+    const response = await fetch('/api/admin/logging', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ level: newLevel }),
+    });
+    const result = await response.json();
+    
+    if (result.success) {
+      setLoggingConfig(prev => prev ? { ...prev, currentLevel: newLevel } : null);
+      setLoggingMessage(result.data.message);
+    } else {
+      setLoggingMessage(result.message || 'Failed to change log level');
+    }
   };
 
 
@@ -400,6 +440,74 @@ export default function AdminPage() {
                     <div className="mt-3">
                       <div className="h-3 w-full bg-blue-200 rounded mb-1"></div>
                       <div className="h-3 w-3/4 bg-blue-200 rounded"></div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Logging Configuration */}
+            <div className="card">
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-indigo-100 rounded-lg">
+                    <CogIcon className="h-6 w-6 text-indigo-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900">Logging Configuration</h3>
+                    <p className="text-sm text-gray-600">
+                      Real-time logging level adjustment (no restart required)
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                {loggingConfig ? (
+                  <div className="p-4 bg-gray-50 rounded-lg">
+                    <label className="label">Current Log Level</label>
+                    <div className="flex items-center gap-3 mt-2">
+                      <select
+                        value={loggingConfig.currentLevel}
+                        onChange={(e) => handleLogLevelChange(e.target.value)}
+                        className="input w-48"
+                      >
+                        {loggingConfig.availableLevels.map(level => (
+                          <option key={level.value} value={level.value}>
+                            {level.label} - {level.description}
+                          </option>
+                        ))}
+                      </select>
+                      <div className="flex items-center gap-2">
+                        <InformationCircleIcon className="h-4 w-4 text-gray-400" />
+                        <span className="text-sm text-gray-600">
+                          Current: {loggingConfig.currentLevel.toUpperCase()}
+                        </span>
+                      </div>
+                    </div>
+                    
+                    {loggingMessage && (
+                      <div className="mt-3 flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-md">
+                        <CheckCircleIcon className="h-4 w-4 text-green-500" />
+                        <span className="text-sm text-green-700">{loggingMessage}</span>
+                      </div>
+                    )}
+                    
+                    <div className="mt-3">
+                      <p className="text-xs text-gray-600">
+                        <strong>Log Levels:</strong> ERROR → WARN → INFO → HTTP → VERBOSE → DEBUG → SILLY (each level includes all previous levels)
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-4 bg-gray-50 rounded-lg animate-pulse">
+                    <div className="h-5 w-24 bg-gray-300 rounded mb-2"></div>
+                    <div className="flex items-center gap-3 mt-2">
+                      <div className="h-8 w-48 bg-gray-300 rounded"></div>
+                      <div className="h-4 w-32 bg-gray-300 rounded"></div>
+                    </div>
+                    <div className="mt-3">
+                      <div className="h-3 w-full bg-gray-300 rounded"></div>
                     </div>
                   </div>
                 )}

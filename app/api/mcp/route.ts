@@ -17,7 +17,7 @@ import { QueryEnhancer } from '@/lib/query-enhancement';
 const INGEST_TOOL_SCHEMA = {
   name: 'codebase.store',
   description:
-    "🤖 AI ASSISTANT: Store code/docs for future semantic search. WHEN TO USE: After reading important files, discovering key implementations, or learning new patterns. Creates searchable knowledge base. 💡 TIP: Use this when you find solutions, patterns, or important code - makes future searches much more effective than re-reading files. ⚠️ CONTENT TYPE GUIDANCE: Use 'rule' for coding standards/constraints, 'user_preference' for settings/preferences, 'code' for implementations, 'documentation' for guides, 'conversation' for discussions.",
+    "🤖 AI ASSISTANT: Store code/docs for future semantic search. WHEN TO USE: After reading important files, discovering key implementations, or learning new patterns. Creates searchable knowledge base. 💡 TIP: Use this when you find solutions, patterns, or important code - makes future searches much more effective than re-reading files. ⚠️ NOTE: For rules and preferences, use 'codebase.set_constraints' instead.",
   inputSchema: {
     type: 'object',
     properties: {
@@ -33,9 +33,9 @@ const INGEST_TOOL_SCHEMA = {
       },
       type: {
         type: 'string',
-        enum: ['code', 'documentation', 'conversation', 'user_preference', 'rule'],
+        enum: ['code', 'documentation', 'conversation'],
         description:
-          "Content category that affects processing: 'code' enables AST parsing for JS/TS with function/class extraction, 'documentation' for guides/specs/READMEs, 'conversation' for chat logs/discussions, 'user_preference' for settings/configurations, 'rule' for business rules and coding constraints. CRITICAL: Use 'rule' for coding standards, style guides, architecture constraints, security policies. Use 'user_preference' for IDE settings, team preferences, workflow choices. These types get PRIORITY in search results to ensure compliance.",
+          "Content category that affects processing: 'code' enables AST parsing for JS/TS with function/class extraction, 'documentation' for guides/specs/READMEs, 'conversation' for chat logs/discussions. NOTE: For rules and preferences, use 'codebase.set_constraints' instead.",
       },
       language: {
         type: 'string',
@@ -50,7 +50,7 @@ const INGEST_TOOL_SCHEMA = {
 const RETRIEVE_TOOL_SCHEMA = {
   name: 'codebase.search',
   description:
-    "🔍 AI ASSISTANT: SEARCH FIRST before Read/Grep! Finds code by meaning, not just keywords. EXAMPLES: 'authentication patterns', 'error handling in APIs', 'React component lifecycle', 'database queries', 'webhook validation'. 🚀 MUCH FASTER than grep - understands context, finds similar implementations even with different names. 🎯 SMART WORKFLOW: Always search for 'rules' and 'user_preferences' first when starting work to understand constraints and preferences before coding.",
+    "🔍 AI ASSISTANT: SEARCH FIRST before Read/Grep! Finds code by meaning, not just keywords. EXAMPLES: 'authentication patterns', 'error handling in APIs', 'React component lifecycle', 'database queries', 'webhook validation'. 🚀 MUCH FASTER than grep - understands context, finds similar implementations even with different names. 🎯 SMART WORKFLOW: Use 'codebase.check_constraints' first to understand rules and preferences, then search for existing code patterns.",
   inputSchema: {
     type: 'object',
     properties: {
@@ -67,8 +67,8 @@ const RETRIEVE_TOOL_SCHEMA = {
         properties: {
           type: {
             type: 'string',
-            enum: ['code', 'documentation', 'conversation', 'user_preference', 'rule'],
-            description: 'Filter by content type',
+            enum: ['code', 'documentation', 'conversation'],
+            description: 'Filter by content type. NOTE: For rules and preferences, use codebase.check_constraints instead.',
           },
           language: { type: 'string', description: 'Filter by programming/markup language' },
           source: {
@@ -177,7 +177,7 @@ const SCHEDULED_INDEXING_TOOL_SCHEMA = {
 const CHECK_CONSTRAINTS_TOOL_SCHEMA = {
   name: 'codebase.check_constraints',
   description:
-    '🚨 AI ASSISTANT: ALWAYS USE FIRST before coding! Automatically searches for rules and user preferences that must be followed. CRITICAL WORKFLOW: Run this before writing any code to ensure compliance with coding standards, style guides, architecture constraints, and user preferences. Returns all relevant rules and preferences with PROJECT RULES TAKING PRECEDENCE over global rules.',
+    '🚨 AI ASSISTANT: MANDATORY FIRST STEP before coding! Retrieves coding rules and preferences from database that must be followed. WHEN TO USE: Always run before writing any code to ensure compliance with coding standards, style guides, architecture constraints, and team preferences. PROJECT RULES OVERRIDE GLOBAL RULES. Use this, not codebase.search, for constraint checking.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -188,6 +188,41 @@ const CHECK_CONSTRAINTS_TOOL_SCHEMA = {
       },
     },
     required: [],
+  },
+};
+
+const SET_CONSTRAINTS_TOOL_SCHEMA = {
+  name: 'codebase.set_constraints',
+  description:
+    '📝 AI ASSISTANT: Store coding rules and preferences in database. WHEN TO USE: When establishing coding standards, style guides, architecture constraints, security policies, or team preferences that future coding tasks must follow. Stored in database (not vectors). Use this, not codebase.store, for constraints.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      type: {
+        type: 'string',
+        enum: ['rule', 'user_preference'],
+        description:
+          "Type of constraint: 'rule' for coding standards, style guides, architecture constraints, security policies; 'user_preference' for IDE settings, team preferences, workflow choices.",
+      },
+      source: {
+        type: 'string',
+        description:
+          'Unique identifier for the constraint (e.g., "typescript-standards", "coding-guidelines", "team-preferences"). Used for updates and deletions.',
+      },
+      content: {
+        type: 'string',
+        description:
+          'The rule or preference content in markdown format. Should be clear, specific, and actionable. Examples: coding style rules, architecture patterns, security requirements.',
+      },
+      scope: {
+        type: 'string',
+        enum: ['global', 'project'],
+        description:
+          'Scope of the constraint: "global" applies to all projects, "project" applies only to current project. Project-specific constraints override global ones.',
+        default: 'global',
+      },
+    },
+    required: ['type', 'source', 'content'],
   },
 };
 
@@ -638,6 +673,7 @@ const FACETED_SEARCH_TOOL_SCHEMA = {
 
 const ALL_TOOLS = [
   CHECK_CONSTRAINTS_TOOL_SCHEMA,
+  SET_CONSTRAINTS_TOOL_SCHEMA,
   INGEST_TOOL_SCHEMA,
   RETRIEVE_TOOL_SCHEMA,
   DELETE_SOURCE_TOOL_SCHEMA,
@@ -843,58 +879,113 @@ export async function POST(request: Request) {
               break;
             case 'codebase.check_constraints':
               // Smart constraint checking with PROJECT PRIORITY - project rules override global ones
-              const constraintQuery = toolArgs?.coding_task
-                ? `${toolArgs.coding_task} coding standards rules preferences constraints`
-                : 'coding standards style guide architecture constraints user preferences';
-
               const { projectId: constraintProjectId } = requireProjectAuth();
               
-              // Get project-specific rules/preferences first
-              const projectRules = await retrieve({
-                query: constraintQuery,
-                project_id: constraintProjectId,
-                filters: { type: 'rule' },
-              });
-              const projectPreferences = await retrieve({
-                query: constraintQuery,
-                project_id: constraintProjectId,
-                filters: { type: 'user_preference' },
-              });
+              try {
+                // Get project-specific rules/preferences from database
+                const projectRulesResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/projects/${constraintProjectId}/rules`);
+                const projectPreferencesResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/projects/${constraintProjectId}/preferences`);
+                
+                const projectRules = projectRulesResponse.ok ? (await projectRulesResponse.json()).data || [] : [];
+                const projectPreferences = projectPreferencesResponse.ok ? (await projectPreferencesResponse.json()).data || [] : [];
 
-              // Get global rules/preferences as fallback (only if no project rules exist)
-              const globalRules = projectRules.length === 0 
-                ? await retrieve({
-                    query: constraintQuery,
-                    project_id: 'global',
-                    filters: { type: 'rule' },
+                // Get global rules/preferences as fallback
+                const globalRulesResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/global/rules`);
+                const globalPreferencesResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/global/preferences`);
+                
+                const globalRules = globalRulesResponse.ok ? (await globalRulesResponse.json()).data || [] : [];
+                const globalPreferences = globalPreferencesResponse.ok ? (await globalPreferencesResponse.json()).data || [] : [];
+
+                // Merge with project taking precedence (project rules come first)
+                const allRules = [...projectRules, ...globalRules];
+                const allPreferences = [...projectPreferences, ...globalPreferences];
+
+                result = {
+                  rules: allRules.map(r => ({
+                    source: r.source,
+                    content: r.content,
+                    scope: r.projectId ? 'project' : 'global',
+                    id: r.id
+                  })),
+                  preferences: allPreferences.map(p => ({
+                    source: p.source,
+                    content: p.content,
+                    scope: p.projectId ? 'project' : 'global',
+                    id: p.id
+                  })),
+                  priority_info: {
+                    project_rules_count: projectRules.length,
+                    global_rules_count: globalRules.length,
+                    project_preferences_count: projectPreferences.length,
+                    global_preferences_count: globalPreferences.length,
+                  },
+                  summary: `Found ${allRules.length} rules (${projectRules.length} project-specific, ${globalRules.length} global) and ${allPreferences.length} preferences (${projectPreferences.length} project-specific, ${globalPreferences.length} global). PROJECT RULES OVERRIDE GLOBAL RULES.`,
+                  workflow_reminder:
+                    '🚨 CRITICAL: Project-specific constraints take precedence over global ones. Review project rules first, then global rules as fallback.',
+                };
+              } catch (error) {
+                result = {
+                  rules: [],
+                  preferences: [],
+                  error: `Failed to fetch rules and preferences from database: ${error instanceof Error ? error.message : 'Unknown error'}`,
+                  summary: 'Failed to load constraints from database. Using empty constraints.',
+                };
+              }
+              break;
+            case 'codebase.set_constraints':
+              if (!toolArgs) throw new Error('Missing arguments for codebase.set_constraints');
+              const { projectId: setConstraintsProjectId } = requireProjectAuth();
+              
+              try {
+                const scope = toolArgs.scope || 'global';
+                const isGlobal = scope === 'global';
+                
+                let endpoint;
+                if (toolArgs.type === 'rule') {
+                  endpoint = isGlobal 
+                    ? `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/global/rules`
+                    : `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/projects/${setConstraintsProjectId}/rules`;
+                } else if (toolArgs.type === 'user_preference') {
+                  endpoint = isGlobal 
+                    ? `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/global/preferences`
+                    : `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/projects/${setConstraintsProjectId}/preferences`;
+                } else {
+                  throw new Error(`Invalid constraint type: ${toolArgs.type}. Must be 'rule' or 'user_preference'.`);
+                }
+                
+                const response = await fetch(endpoint, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    source: toolArgs.source,
+                    content: toolArgs.content
                   })
-                : [];
-
-              const globalPreferences = projectPreferences.length === 0
-                ? await retrieve({
-                    query: constraintQuery,
-                    project_id: 'global',
-                    filters: { type: 'user_preference' },
-                  })
-                : [];
-
-              // Merge with project taking precedence (project rules come first)
-              const allRules = [...projectRules, ...globalRules];
-              const allPreferences = [...projectPreferences, ...globalPreferences];
-
-              result = {
-                rules: allRules,
-                preferences: allPreferences,
-                priority_info: {
-                  project_rules_count: projectRules.length,
-                  global_rules_count: globalRules.length,
-                  project_preferences_count: projectPreferences.length,
-                  global_preferences_count: globalPreferences.length,
-                },
-                summary: `Found ${allRules.length} rules (${projectRules.length} project-specific, ${globalRules.length} global) and ${allPreferences.length} preferences (${projectPreferences.length} project-specific, ${globalPreferences.length} global). PROJECT RULES OVERRIDE GLOBAL RULES.`,
-                workflow_reminder:
-                  '🚨 CRITICAL: Project-specific constraints take precedence over global ones. Review project rules first, then global rules as fallback.',
-              };
+                });
+                
+                if (!response.ok) {
+                  const errorData = await response.text();
+                  throw new Error(`Failed to store ${toolArgs.type}: ${response.statusText} - ${errorData}`);
+                }
+                
+                const data = await response.json();
+                const constraintId = data.data?.rule?.id || data.data?.preference?.id;
+                
+                result = {
+                  success: true,
+                  message: `${toolArgs.type === 'rule' ? 'Rule' : 'Preference'} stored successfully in database`,
+                  constraint_id: constraintId,
+                  source: toolArgs.source,
+                  type: toolArgs.type,
+                  scope: scope,
+                  workflow_tip: `Use 'codebase.check_constraints' before coding to ensure compliance with this ${toolArgs.type}.`
+                };
+              } catch (error) {
+                result = {
+                  success: false,
+                  error: `Failed to store ${toolArgs.type || 'constraint'} in database: ${error instanceof Error ? error.message : 'Unknown error'}`,
+                  troubleshooting: 'Check that the database API endpoints are accessible and the constraint data is valid.'
+                };
+              }
               break;
             case 'codebase.cleanup_project':
               if (!toolArgs) throw new Error('Missing arguments for codebase.cleanup_project');

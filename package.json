@@ -47,6 +47,7 @@
     "@types/react-dom": "^19.1.7",
     "@types/react-syntax-highlighter": "^15.5.13",
     "@types/redis": "^4.0.11",
+    "@types/winston": "^2.4.4",
     "bullmq": "^5.58.1",
     "clsx": "^2.1.1",
     "d3": "^7.9.0",
@@ -61,7 +62,9 @@
     "redis": "^5.8.2",
     "simple-git": "^3.28.0",
     "tailwind-merge": "^3.3.1",
-    "uuid": "^11.1.0"
+    "uuid": "^11.1.0",
+    "winston": "^3.17.0",
+    "zod": "^4.1.1"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.1",

@@ -17,6 +17,9 @@ model Config {
   qdrantUrl                       String   @default("http://localhost:6333")
   ollamaUrl                       String   @default("http://localhost:11434")
   
+  // Logging configuration
+  logLevel                        String   @default("debug")
+  
   // Documentation scheduling settings
   docReindexEnabled               Boolean  @default(true)
   docReindexInterval              Int      @default(14) // days (14 days default)

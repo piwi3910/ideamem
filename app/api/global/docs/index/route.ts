@@ -7,7 +7,7 @@ import { parserFactory } from '@/lib/parsing';
 import simpleGit from 'simple-git';
 import { v4 as uuidv4 } from 'uuid';
 import * as os from 'os';
-import { PrismaClient } from '@/lib/generated/prisma';
+import { prisma } from '@/lib/database';
 import { shouldUseDynamicRendering, dynamicRenderer } from '@/lib/dynamic-renderer';
 import { ParsedContentCache } from '@/lib/cache';
 import { ContentClassifier } from '@/lib/content-classifier';
@@ -31,7 +31,7 @@ interface DocRepository {
 }
 
 // Initialize Prisma client
-const prisma = new PrismaClient();
+// Using singleton from @/lib/database
 
 async function getRepository(repositoryId: string): Promise<DocRepository | null> {
   try {

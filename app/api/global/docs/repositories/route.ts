@@ -5,7 +5,7 @@ import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import simpleGit from 'simple-git';
 import * as os from 'os';
-import { PrismaClient } from '@/lib/generated/prisma';
+import { prisma } from '@/lib/database';
 
 interface DocRepository {
   id: string;
@@ -24,7 +24,7 @@ interface DocRepository {
 }
 
 // Initialize Prisma client
-const prisma = new PrismaClient();
+// Using singleton from @/lib/database
 
 // Auto-detect source type from URL
 function detectSourceType(url: string): 'git' | 'llmstxt' | 'website' {

@@ -10,10 +10,8 @@ This document provides comprehensive guidance for using IdeaMem's MCP (Model Con
 Before proceeding with ANY task, Claude MUST:
 
 1. **IMMEDIATELY** announce: "🚨 MCP WORKFLOW CHECKPOINT 🚨"
-2. **IMMEDIATELY** run: `mcp__ideamem-projectname__codebase_check_constraints`
-3. **IMMEDIATELY** run: `mcp__ideamem-projectname__codebase_search query="rules" filters={"type": "rule"}`
-4. **IMMEDIATELY** run: `mcp__ideamem-projectname__codebase_search query="preferences" filters={"type": "user_preference"}`
-5. **VALIDATE ALL SYMBOLS** before using any variables, functions, enums, or CSS classes
+2. **IMMEDIATELY** run: `codebase.check_constraints` (Gets ALL rules and preferences from DATABASE)
+3. **VALIDATE ALL SYMBOLS** before using any variables, functions, enums, or CSS classes
 
 ❌ **FAILURE TO FOLLOW = BROKEN CODE AND BUILD ERRORS** ❌
 
@@ -25,11 +23,9 @@ Before proceeding with ANY task, Claude MUST:
 
 ## ⚠️ MANDATORY FIRST STEP: MCP Rules Check
 
-**BEFORE ANY ACTION, Claude MUST run these MCP tools:**
+**BEFORE ANY ACTION, Claude MUST run this MCP tool:**
 
-1. **Check for coding constraints**: `codebase.check_constraints` 
-2. **Search for project rules**: `codebase.search query="rules" filters={"type": "rule"}`
-3. **Search for user preferences**: `codebase.search query="preferences" filters={"type": "user_preference"}`
+1. **Check for coding constraints**: `codebase.check_constraints` - Gets rules and preferences from DATABASE (not vectors)
 
 **BEFORE ANY CODE WRITING, Claude MUST validate all symbols:**
 - Variables: `codebase.validate_symbol`
@@ -37,6 +33,8 @@ Before proceeding with ANY task, Claude MUST:
 - Functions: `codebase.check_function_signature`
 
 **NEVER skip these steps** - this prevents undefined variables, wrong enum values, incorrect function calls, and broken code.
+
+**IMPORTANT**: Rules and preferences are now stored in DATABASE, not vectors. Use `codebase.check_constraints` and `codebase.set_constraints`, NOT `codebase.search` or `codebase.store`.
 
 ## 🔧 AUTOMATION TRIGGERS & ERROR RECOVERY
 
@@ -72,10 +70,11 @@ Before using ANY of these, MUST validate:
 ## 📋 MCP Tool Workflow Guide
 
 ### 🔧 Core Development Workflow
-1. **BEFORE ANY CODING**: Run `codebase.check_constraints` to get rules and preferences
+1. **BEFORE ANY CODING**: Run `codebase.check_constraints` to get rules and preferences from database
 2. **BEFORE USING ANY SYMBOL**: Use validation tools (`codebase.validate_symbol`, `codebase.validate_enum_values`, `codebase.check_function_signature`)
-3. **WHILE CODING**: Use `codebase.search` to find existing implementations and patterns
-4. **AFTER WRITING CODE**: Use `codebase.store` to index new important code for future searches
+3. **WHILE CODING**: Use `codebase.search` to find existing code implementations and patterns
+4. **AFTER WRITING CODE**: Use `codebase.store` to index new important code for future searches (code/docs only)
+5. **FOR NEW RULES/PREFERENCES**: Use `codebase.set_constraints` to store coding standards and team preferences
 
 ### 🔍 Code Search & Discovery Workflow
 **When looking for existing code:**
@@ -159,9 +158,10 @@ Before using ANY of these, MUST validate:
 ## 🛠️ Complete MCP Tools Reference
 
 ### 🔧 Core Codebase Tools (Project Context Only)
-- `codebase.check_constraints` - 🚨 Check project/global rules and preferences before coding
-- `codebase.search` - 🔍 Semantic search for code and documentation in your project
-- `codebase.store` - 🤖 Store and index content with intelligent semantic chunking
+- `codebase.check_constraints` - 🚨 Get rules and preferences from DATABASE before coding (mandatory first step)
+- `codebase.set_constraints` - 📝 Store rules and preferences in DATABASE (for coding standards, team preferences)
+- `codebase.search` - 🔍 Semantic search for code and documentation in your project (vectors only)
+- `codebase.store` - 🤖 Store and index CODE/DOCS with semantic chunking (no rules/preferences)
 - `codebase.forget` - 🗑️ Delete content by source identifier from your project
 
 ### ⚡ File Management Tools (Project Context Only)
@@ -243,8 +243,13 @@ Before using ANY of these, MUST validate:
 
 ## Content Types
 
+### For codebase.store (Vector Storage)
 - `code`: Programming code (supports AST-based chunking for JS/TS)
-- `documentation`: Technical documentation
+- `documentation`: Technical documentation  
 - `conversation`: Chat/discussion content
-- `user_preference`: User settings and preferences
-- `rule`: Business rules and constraints
+
+### For codebase.set_constraints (Database Storage)
+- `rule`: Business rules and coding constraints (stored in database)
+- `user_preference`: User settings and team preferences (stored in database)
+
+**IMPORTANT**: Rules and preferences are now stored in DATABASE via `codebase.set_constraints` and retrieved via `codebase.check_constraints`. Do NOT use `codebase.store` for rules/preferences.

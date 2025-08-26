@@ -1,7 +1,5 @@
-import { PrismaClient } from './generated/prisma';
+import { prisma } from './database';
 import { createHash } from 'crypto';
-
-const prisma = new PrismaClient();
 
 interface QuerySuggestion {
   text: string;

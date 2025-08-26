@@ -72,3 +72,4 @@ Thumbs.db
 **/public/worker-*.js.map
 
 /lib/generated/prisma
+logs/

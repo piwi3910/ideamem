@@ -1,8 +1,6 @@
 import { NextResponse } from 'next/server';
-import { PrismaClient } from '@/lib/generated/prisma';
+import { prisma } from '@/lib/database';
 import { getQdrantClient } from '@/lib/memory';
-
-const prisma = new PrismaClient();
 
 export async function GET() {
   try {

@@ -1,4 +1,5 @@
 import { getProjectByToken } from '@/lib/projects';
+import { loggers } from '@/lib/logger';
 
 // Custom function to validate Bearer tokens for API routes
 export async function validateBearerToken(authHeader: string | null): Promise<{
@@ -24,7 +25,9 @@ export async function validateBearerToken(authHeader: string | null): Promise<{
       };
     }
   } catch (error) {
-    console.error('Token validation error:', error);
+    loggers.auth.error('Token validation failed', error, {
+      tokenPrefix: token.substring(0, 8) + '...',
+    });
   }
 
   return null;
