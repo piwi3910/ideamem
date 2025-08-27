@@ -12,6 +12,8 @@ import { deleteAllProjectVectors } from '@/lib/memory';
 import { SearchResultsCache } from '@/lib/cache';
 import { HybridSearchEngine } from '@/lib/hybrid-search';
 import { QueryEnhancer } from '@/lib/query-enhancement';
+import { MCPToolSchemas, validateToolArguments, type MCPToolName } from '@/lib/schemas/mcp';
+import { z } from 'zod';
 
 // Define ToolSchema objects for our custom methods
 const INGEST_TOOL_SCHEMA = {
@@ -824,57 +826,79 @@ export async function POST(request: Request) {
         const { name, arguments: toolArgs } = params;
 
         try {
+          // Validate tool arguments with Zod if schema exists
+          let validatedArgs = toolArgs;
+          if (name in MCPToolSchemas) {
+            try {
+              validatedArgs = validateToolArguments(name as MCPToolName, toolArgs || {});
+            } catch (validationError) {
+              if (validationError instanceof z.ZodError) {
+                return NextResponse.json(
+                  {
+                    jsonrpc: '2.0',
+                    error: {
+                      code: -32602,
+                      message: 'Invalid arguments',
+                      data: validationError.issues,
+                    },
+                    id: body.id,
+                  },
+                  { status: 400 }
+                );
+              }
+              throw validationError;
+            }
+          }
+          
           let result;
           switch (name) {
             case 'codebase.store':
-              if (!toolArgs) throw new Error('Missing arguments for codebase.store');
+              if (!validatedArgs) throw new Error('Missing arguments for codebase.store');
               const { projectId: storeProjectId } = requireProjectAuth();
-              result = await ingest({ ...toolArgs, project_id: storeProjectId });
+              result = await ingest({ ...validatedArgs, project_id: storeProjectId });
               break;
             case 'codebase.search':
-              if (!toolArgs) throw new Error('Missing arguments for codebase.search');
+              if (!validatedArgs) throw new Error('Missing arguments for codebase.search');
               const { projectId: searchProjectId } = requireProjectAuth();
-              result = await retrieve({ ...toolArgs, project_id: searchProjectId });
+              result = await retrieve({ ...validatedArgs, project_id: searchProjectId });
               // Track query for metrics
               trackQuery(searchProjectId).catch((err) => console.warn('Failed to track query:', err));
               break;
             case 'codebase.forget':
-              if (!toolArgs) throw new Error('Missing arguments for codebase.forget');
+              if (!validatedArgs) throw new Error('Missing arguments for codebase.forget');
               const { projectId: forgetProjectId } = requireProjectAuth();
-              result = await deleteSource({ ...toolArgs, project_id: forgetProjectId });
+              result = await deleteSource({ ...validatedArgs, project_id: forgetProjectId });
               break;
             case 'codebase.index_file':
-              if (!toolArgs) throw new Error('Missing arguments for codebase.index_file');
+              if (!validatedArgs) throw new Error('Missing arguments for codebase.index_file');
               const { projectId: authProjectId, project: authProject } = requireProjectAuth();
               result = await indexSingleFile(
                 authProjectId,
                 authProject.gitRepo,
-                toolArgs.file_path,
-                toolArgs.branch || 'main'
+                validatedArgs.file_path,
+                validatedArgs.branch || 'main'
               );
               break;
             case 'codebase.refresh_file':
-              if (!toolArgs) throw new Error('Missing arguments for codebase.refresh_file');
+              if (!validatedArgs) throw new Error('Missing arguments for codebase.refresh_file');
               const { projectId: refreshProjectId, project: refreshProject } = requireProjectAuth();
               result = await reindexSingleFile(
                 refreshProjectId,
                 refreshProject.gitRepo,
-                toolArgs.file_path,
-                toolArgs.branch || 'main'
+                validatedArgs.file_path,
+                validatedArgs.branch || 'main'
               );
               break;
             case 'codebase.rebuild_all':
-              if (!toolArgs) throw new Error('Missing arguments for codebase.rebuild_all');
               const { projectId: rebuildProjectId, project: rebuildProject } = requireProjectAuth();
-              result = await fullReindex(rebuildProjectId, rebuildProject.gitRepo, toolArgs.branch || 'main');
+              result = await fullReindex(rebuildProjectId, rebuildProject.gitRepo, validatedArgs?.branch || 'main');
               break;
             case 'codebase.sync_changes':
-              if (!toolArgs) throw new Error('Missing arguments for codebase.sync_changes');
               const { projectId: syncProjectId, project: syncProject } = requireProjectAuth();
               result = await scheduledIncrementalIndexing(
                 syncProjectId,
                 syncProject.gitRepo,
-                toolArgs.branch || 'main'
+                validatedArgs?.branch || 'main'
               );
               break;
             case 'codebase.check_constraints':

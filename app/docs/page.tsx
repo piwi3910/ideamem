@@ -1,6 +1,8 @@
 'use client';
 
 import { useState } from 'react';
+import { useForm, Controller } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
 import {
   CheckCircleIcon,
   ExclamationCircleIcon,
@@ -15,6 +17,12 @@ import {
   CodeBracketIcon,
 } from '@heroicons/react/24/outline';
 import { twMerge } from 'tailwind-merge';
+import { 
+  docRepositoryFormSchema, 
+  docRepositoryUpdateFormSchema,
+  type DocRepositoryFormData,
+  type DocRepositoryUpdateFormData 
+} from '@/lib/schemas/forms';
 
 // Import React Query hooks and utility functions
 import { 
@@ -46,10 +54,25 @@ export default function DocsPage() {
   
   // Local UI state
   const [editingRepo, setEditingRepo] = useState<DocRepository | null>(null);
-  const [newRepo, setNewRepo] = useState({
-    url: '',
-  });
   const [showAddForm, setShowAddForm] = useState(false);
+  
+  // Form hooks
+  const addForm = useForm<DocRepositoryFormData>({
+    resolver: zodResolver(docRepositoryFormSchema),
+    defaultValues: {
+      name: '',
+      url: '',
+      sourceType: 'git',
+      branch: 'main',
+      description: '',
+      reindexInterval: 14,
+      autoReindexEnabled: true,
+    },
+  });
+  
+  const editForm = useForm<DocRepositoryUpdateFormData>({
+    resolver: zodResolver(docRepositoryUpdateFormSchema),
+  });
   
   const error = fetchError?.message || createRepoMutation.error?.message || 
                 updateRepoMutation.error?.message || deleteRepoMutation.error?.message || '';
@@ -59,34 +82,34 @@ export default function DocsPage() {
     updateRepoMutation.isSuccess ? 'Repository updated successfully' :
     deleteRepoMutation.isSuccess ? 'Repository deleted successfully' : '';
 
-  const handleAddRepository = async () => {
-    if (!newRepo.url.trim()) {
-      return;
-    }
-
+  const handleAddRepository = addForm.handleSubmit(async (data) => {
     createRepoMutation.mutate({
-      url: newRepo.url,
+      url: data.url,
     }, {
       onSuccess: () => {
-        setNewRepo({ url: '' });
+        addForm.reset();
         setShowAddForm(false);
       }
     });
-  };
+  });
 
-  const handleEditRepository = async (repo: DocRepository) => {
+  const handleEditRepository = editForm.handleSubmit(async (data) => {
     if (!editingRepo) return;
 
-    const apiData = mapRepositoryForAPI(editingRepo);
+    const apiData = mapRepositoryForAPI({
+      ...editingRepo,
+      ...data,
+    });
     updateRepoMutation.mutate({
       ...apiData,
-      id: repo.id,
+      id: editingRepo.id,
     }, {
       onSuccess: () => {
         setEditingRepo(null);
+        editForm.reset();
       }
     });
-  };
+  });
 
   const handleDeleteRepository = async (repo: DocRepository) => {
     if (
@@ -129,7 +152,7 @@ export default function DocsPage() {
 
       {/* Add Repository Form */}
       {showAddForm && (
-        <div className="card">
+        <form onSubmit={handleAddRepository} className="card">
           <h4 className="text-lg font-medium text-gray-900 mb-4">Add Documentation Source</h4>
           <div className="space-y-4">
             <div>
@@ -138,9 +161,11 @@ export default function DocsPage() {
                 type="url"
                 className="input"
                 placeholder="https://github.com/facebook/react or https://example.com/llms.txt or https://docs.example.com"
-                value={newRepo.url}
-                onChange={(e) => setNewRepo({ ...newRepo, url: e.target.value })}
+                {...addForm.register('url')}
               />
+              {addForm.formState.errors.url && (
+                <span className="text-sm text-red-600">{addForm.formState.errors.url.message}</span>
+              )}
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mt-2">
                 <p className="text-xs text-blue-800 mb-2 font-medium">
                   Supported source types:
@@ -170,13 +195,18 @@ export default function DocsPage() {
               </div>
             </div>
             <div className="flex gap-3">
-              <button onClick={handleAddRepository} className="btn btn-primary">
+              <button 
+                type="submit" 
+                className="btn btn-primary"
+                disabled={addForm.formState.isSubmitting}
+              >
                 Add Repository
               </button>
               <button
+                type="button"
                 onClick={() => {
                   setShowAddForm(false);
-                  setNewRepo({ url: '' });
+                  addForm.reset();
                 }}
                 className="btn btn-secondary"
               >
@@ -184,7 +214,7 @@ export default function DocsPage() {
               </button>
             </div>
           </div>
-        </div>
+        </form>
       )}
 
       {/* Error Message */}
@@ -309,7 +339,18 @@ export default function DocsPage() {
                     </div>
                   )}
                   <button
-                    onClick={() => setEditingRepo({ ...repo })}
+                    onClick={() => {
+                      setEditingRepo({ ...repo });
+                      editForm.reset({
+                        name: repo.name,
+                        url: repo.url || repo.gitUrl,
+                        sourceType: repo.sourceType,
+                        branch: repo.branch,
+                        description: repo.description,
+                        reindexInterval: repo.reindexInterval,
+                        autoReindexEnabled: repo.autoReindexEnabled,
+                      });
+                    }}
                     className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"
                     title="Edit repository"
                   >
@@ -326,18 +367,18 @@ export default function DocsPage() {
               </div>
 
               {editingRepo && editingRepo.id === repo.id && (
-                <div className="border-t border-gray-200 pt-4 space-y-4">
+                <form onSubmit={handleEditRepository} className="border-t border-gray-200 pt-4 space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className="label">Source Name</label>
                       <input
                         type="text"
                         className="input"
-                        value={editingRepo.name}
-                        onChange={(e) =>
-                          setEditingRepo({ ...editingRepo, name: e.target.value })
-                        }
+                        {...editForm.register('name')}
                       />
+                      {editForm.formState.errors.name && (
+                        <span className="text-sm text-red-600">{editForm.formState.errors.name.message}</span>
+                      )}
                     </div>
                     {editingRepo.sourceType === 'git' && (
                       <div>
@@ -345,11 +386,11 @@ export default function DocsPage() {
                         <input
                           type="text"
                           className="input"
-                          value={editingRepo.branch || ''}
-                          onChange={(e) =>
-                            setEditingRepo({ ...editingRepo, branch: e.target.value })
-                          }
+                          {...editForm.register('branch')}
                         />
+                        {editForm.formState.errors.branch && (
+                          <span className="text-sm text-red-600">{editForm.formState.errors.branch.message}</span>
+                        )}
                       </div>
                     )}
                   </div>
@@ -364,56 +405,43 @@ export default function DocsPage() {
                     <input
                       type="url"
                       className="input"
-                      value={editingRepo.gitUrl || editingRepo.url || ''}
-                      onChange={(e) => {
-                        if (editingRepo.sourceType === 'git') {
-                          setEditingRepo({ ...editingRepo, gitUrl: e.target.value });
-                        } else {
-                          setEditingRepo({ ...editingRepo, url: e.target.value });
-                        }
-                      }}
+                      {...editForm.register('url')}
                     />
+                    {editForm.formState.errors.url && (
+                      <span className="text-sm text-red-600">{editForm.formState.errors.url.message}</span>
+                    )}
                   </div>
                   <div>
                     <label className="label">Description</label>
                     <input
                       type="text"
                       className="input"
-                      value={editingRepo.description || ''}
-                      onChange={(e) =>
-                        setEditingRepo({ ...editingRepo, description: e.target.value })
-                      }
+                      {...editForm.register('description')}
                     />
-                  </div>
-                  <div>
-                    <label className="label">Primary Languages/Technologies</label>
-                    <input
-                      type="text"
-                      className="input"
-                      value={editingRepo.languages.join(', ')}
-                      onChange={(e) =>
-                        setEditingRepo({
-                          ...editingRepo,
-                          languages: e.target.value
-                            .split(',')
-                            .map((l) => l.trim())
-                            .filter(Boolean),
-                        })
-                      }
-                    />
+                    {editForm.formState.errors.description && (
+                      <span className="text-sm text-red-600">{editForm.formState.errors.description.message}</span>
+                    )}
                   </div>
                   <div className="flex gap-3">
                     <button
-                      onClick={() => handleEditRepository(repo)}
+                      type="submit"
                       className="btn btn-primary"
+                      disabled={editForm.formState.isSubmitting}
                     >
                       Save Changes
                     </button>
-                    <button onClick={() => setEditingRepo(null)} className="btn btn-secondary">
+                    <button 
+                      type="button"
+                      onClick={() => {
+                        setEditingRepo(null);
+                        editForm.reset();
+                      }}
+                      className="btn btn-secondary"
+                    >
                       Cancel
                     </button>
                   </div>
-                </div>
+                </form>
               )}
             </div>
           ))}

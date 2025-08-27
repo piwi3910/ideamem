@@ -1,5 +1,13 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, NextRequest } from 'next/server';
+import { z } from 'zod';
 import { getProjects, createProject } from '@/lib/projects';
+import { withValidation } from '@/lib/middleware/validation';
+
+const createProjectSchema = z.object({
+  name: z.string().min(1, 'Name is required').trim(),
+  description: z.string().trim().optional(),
+  gitRepo: z.string().min(1, 'Git repository is required').trim(),
+});
 
 export async function GET() {
   try {
@@ -11,25 +19,21 @@ export async function GET() {
   }
 }
 
-export async function POST(request: Request) {
-  try {
-    const body = await request.json();
-    const { name, description, gitRepo } = body;
+export const POST = withValidation(
+  { body: createProjectSchema },
+  async (_request: NextRequest, { body }) => {
+    try {
+      const project = await createProject({
+        name: body.name,
+        description: body.description || undefined,
+        gitRepo: body.gitRepo,
+      });
 
-    if (!name || !gitRepo) {
-      return NextResponse.json({ error: 'Name and git repository are required' }, { status: 400 });
+      return NextResponse.json({ project }, { status: 201 });
+    } catch (error) {
+      console.error('Error creating project:', error);
+      const message = error instanceof Error ? error.message : 'Failed to create project';
+      return NextResponse.json({ error: message }, { status: 500 });
     }
-
-    const project = await createProject({
-      name: name.trim(),
-      description: description?.trim() || undefined,
-      gitRepo: gitRepo.trim(),
-    });
-
-    return NextResponse.json({ project }, { status: 201 });
-  } catch (error) {
-    console.error('Error creating project:', error);
-    const message = error instanceof Error ? error.message : 'Failed to create project';
-    return NextResponse.json({ error: message }, { status: 500 });
   }
-}
+);

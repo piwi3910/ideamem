@@ -1,7 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import { prisma } from '@/lib/database';
 import { createSuccessResponse, createNotFoundError, createErrorResponse, HTTP_STATUS } from '@/lib/utils/responses';
 import { PrismaErrorHandlers, createPreferenceErrorMessages } from '@/lib/utils/prisma-errors';
+import { withValidation, CommonSchemas } from '@/lib/middleware/validation';
+
+// Define Zod schemas for CRUD operations
+const crudCreateSchema = z.object({
+  source: z.string().min(1, 'Source is required'),
+  content: z.string().min(1, 'Content is required'),
+  category: z.string().optional(),
+});
+
+const crudUpdateSchema = z.object({
+  source: z.string().min(1, 'Source is required'),
+  content: z.string().optional(),
+  category: z.string().optional(),
+});
+
+const crudDeleteQuerySchema = z.object({
+  source: z.string().min(1, 'Source parameter is required'),
+});
+
+const crudParamsSchema = z.object({
+  id: z.string().optional(),
+});
 
 export type CrudItem = {
   id: string;
@@ -261,57 +284,47 @@ export function createCrudRoutes<T extends CrudItem>(handler: CrudHandlerFactory
     /**
      * GET handler
      */
-    GET: async (request: NextRequest, context?: { params?: Promise<{ id?: string }> }) => {
-      const projectId = context?.params ? (await context.params).id : undefined;
-      return handler.list(projectId);
-    },
+    GET: withValidation(
+      { params: crudParamsSchema },
+      async (_request: NextRequest, { params }, context) => {
+        const projectId = params?.id;
+        return handler.list(projectId);
+      }
+    ),
 
     /**
      * POST handler
      */
-    POST: async (request: NextRequest, context?: { params?: Promise<{ id?: string }> }) => {
-      try {
-        const body = await request.json();
-        const projectId = context?.params ? (await context.params).id : undefined;
+    POST: withValidation(
+      { body: crudCreateSchema, params: crudParamsSchema },
+      async (_request: NextRequest, { body, params }) => {
+        const projectId = params?.id;
         return handler.create(body, projectId);
-      } catch (error) {
-        return createErrorResponse('Invalid JSON body', HTTP_STATUS.BAD_REQUEST);
       }
-    },
+    ),
 
     /**
      * PUT handler
      */
-    PUT: async (request: NextRequest, context?: { params?: Promise<{ id?: string }> }) => {
-      try {
-        const body = await request.json();
+    PUT: withValidation(
+      { body: crudUpdateSchema, params: crudParamsSchema },
+      async (_request: NextRequest, { body, params }) => {
         const { source, ...updateData } = body;
-        
-        if (!source) {
-          return createErrorResponse('Source is required', HTTP_STATUS.BAD_REQUEST);
-        }
-
-        const projectId = context?.params ? (await context.params).id : undefined;
+        const projectId = params?.id;
         return handler.update(source, updateData, projectId);
-      } catch (error) {
-        return createErrorResponse('Invalid JSON body', HTTP_STATUS.BAD_REQUEST);
       }
-    },
+    ),
 
     /**
      * DELETE handler
      */
-    DELETE: async (request: NextRequest, context?: { params?: Promise<{ id?: string }> }) => {
-      const { searchParams } = new URL(request.url);
-      const source = searchParams.get('source');
-      
-      if (!source) {
-        return createErrorResponse('Source parameter is required', HTTP_STATUS.BAD_REQUEST);
+    DELETE: withValidation(
+      { query: crudDeleteQuerySchema, params: crudParamsSchema },
+      async (_request: NextRequest, { query, params }) => {
+        const projectId = params?.id;
+        return handler.delete(query.source, projectId);
       }
-
-      const projectId = context?.params ? (await context.params).id : undefined;
-      return handler.delete(source, projectId);
-    },
+    ),
   };
 }
 

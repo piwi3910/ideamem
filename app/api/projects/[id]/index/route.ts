@@ -1,11 +1,18 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, NextRequest } from 'next/server';
+import { z } from 'zod';
 import { getProject, startIndexingJob, cancelIndexingJob } from '@/lib/projects';
 import { cancelIndexing } from '@/lib/indexing';
 import { QueueManager, JOB_PRIORITIES } from '@/lib/queue';
+import { withValidation } from '@/lib/middleware/validation';
 
-export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  try {
-    const { id } = await params;
+const paramsSchema = z.object({
+  id: z.string(),
+});
+
+export const POST = withValidation(
+  { params: paramsSchema },
+  async (_request: NextRequest, { params: { id } }) => {
+    try {
     const project = await getProject(id);
 
     if (!project) {
@@ -65,19 +72,21 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       throw queueError;
     }
 
-    return NextResponse.json({
-      message: 'Indexing started',
-      projectId: id,
-    });
-  } catch (error) {
-    console.error('Error starting indexing:', error);
-    return NextResponse.json({ error: 'Failed to start indexing' }, { status: 500 });
+      return NextResponse.json({
+        message: 'Indexing started',
+        projectId: id,
+      });
+    } catch (error) {
+      console.error('Error starting indexing:', error);
+      return NextResponse.json({ error: 'Failed to start indexing' }, { status: 500 });
+    }
   }
-}
+);
 
-export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  try {
-    const { id } = await params;
+export const DELETE = withValidation(
+  { params: paramsSchema },
+  async (_request: NextRequest, { params: { id } }) => {
+    try {
     const success = cancelIndexing(id);
 
     if (success) {
@@ -90,4 +99,5 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     console.error('Error cancelling indexing:', error);
     return NextResponse.json({ error: 'Failed to cancel indexing' }, { status: 500 });
   }
-}
+  }
+);

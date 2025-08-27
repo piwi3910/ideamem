@@ -1,6 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import { prisma } from '@/lib/database';
 import { createSuccessResponse, createNotFoundError, createErrorResponse, HTTP_STATUS } from '@/lib/utils/responses';
+import { withValidation } from '@/lib/middleware/validation';
+
+// Define schemas for validation
+const constraintCategoryEnum = z.enum(['rule', 'tooling', 'workflow', 'formatting']);
+
+const createConstraintSchema = z.object({
+  source: z.string().min(1, 'Source is required'),
+  content: z.string().min(1, 'Content is required'),
+  category: constraintCategoryEnum,
+});
+
+const updateConstraintSchema = z.object({
+  source: z.string().min(1, 'Source is required'),
+  content: z.string().min(1, 'Content is required'),
+  category: constraintCategoryEnum.optional(),
+});
+
+const deleteConstraintSchema = z.object({
+  source: z.string().min(1, 'Source is required'),
+});
 
 // Unified API for all global constraints (all categories under preferences)
 export async function GET() {
@@ -40,29 +61,61 @@ export async function GET() {
 }
 
 // POST - Add new global constraint
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json();
-    const { source, content, category } = body;
+export const POST = withValidation(
+  { body: createConstraintSchema },
+  async (_request: NextRequest, { body: { source, content, category } }) => {
+    try {
+      const preference = await prisma.globalPreference.create({
+        data: {
+          source,
+          content,
+          category: category || 'rule'
+        },
+      });
 
-    if (!source || !content) {
-      return createErrorResponse('Source and content are required', HTTP_STATUS.BAD_REQUEST);
+      return createSuccessResponse(
+        {
+          constraint: {
+            id: preference.id,
+            payload: {
+              source: preference.source,
+              content: preference.content,
+              category: preference.category,
+              type: 'user_preference',
+              language: 'markdown',
+              scope: 'global',
+              project_id: 'global'
+            }
+          },
+          message: 'Constraint added successfully'
+        },
+        'Constraint added successfully',
+        HTTP_STATUS.CREATED
+      );
+    } catch (error: any) {
+      console.error('Error adding global constraint:', error);
+      if (error.code === 'P2002') {
+        return createErrorResponse('A constraint with this source already exists', HTTP_STATUS.CONFLICT);
+      }
+      return createErrorResponse('Failed to add constraint', HTTP_STATUS.INTERNAL_SERVER_ERROR);
     }
+  }
+);
 
-    if (!['rule', 'tooling', 'workflow', 'formatting'].includes(category)) {
-      return createErrorResponse('Category must be one of: rule, tooling, workflow, formatting', HTTP_STATUS.BAD_REQUEST);
-    }
+// PUT - Update existing global constraint
+export const PUT = withValidation(
+  { body: updateConstraintSchema },
+  async (_request: NextRequest, { body: { source, content, category } }) => {
+    try {
+      const preference = await prisma.globalPreference.update({
+        where: { source },
+        data: { 
+          content,
+          ...(category && { category })
+        },
+      });
 
-    const preference = await prisma.globalPreference.create({
-      data: {
-        source,
-        content,
-        category: category || 'rule'
-      },
-    });
-
-    return createSuccessResponse(
-      {
+      return createSuccessResponse({
         constraint: {
           id: preference.id,
           payload: {
@@ -75,89 +128,37 @@ export async function POST(request: NextRequest) {
             project_id: 'global'
           }
         },
-        message: 'Constraint added successfully'
-      },
-      'Constraint added successfully',
-      HTTP_STATUS.CREATED
-    );
-  } catch (error: any) {
-    console.error('Error adding global constraint:', error);
-    if (error.code === 'P2002') {
-      return createErrorResponse('A constraint with this source already exists', HTTP_STATUS.CONFLICT);
+        message: 'Constraint updated successfully'
+      });
+    } catch (error: any) {
+      console.error('Error updating global constraint:', error);
+      if (error.code === 'P2025') {
+        return createNotFoundError('Constraint not found');
+      }
+      return createErrorResponse('Failed to update constraint', HTTP_STATUS.INTERNAL_SERVER_ERROR);
     }
-    return createErrorResponse('Failed to add constraint', HTTP_STATUS.INTERNAL_SERVER_ERROR);
   }
-}
-
-// PUT - Update existing global constraint
-export async function PUT(request: NextRequest) {
-  try {
-    const body = await request.json();
-    const { source, content, category } = body;
-
-    if (!source || !content) {
-      return createErrorResponse('Source and content are required', HTTP_STATUS.BAD_REQUEST);
-    }
-
-    if (category && !['rule', 'tooling', 'workflow', 'formatting'].includes(category)) {
-      return createErrorResponse('Category must be one of: rule, tooling, workflow, formatting', HTTP_STATUS.BAD_REQUEST);
-    }
-
-    const preference = await prisma.globalPreference.update({
-      where: { source },
-      data: { 
-        content,
-        ...(category && { category })
-      },
-    });
-
-    return createSuccessResponse({
-      constraint: {
-        id: preference.id,
-        payload: {
-          source: preference.source,
-          content: preference.content,
-          category: preference.category,
-          type: 'user_preference',
-          language: 'markdown',
-          scope: 'global',
-          project_id: 'global'
-        }
-      },
-      message: 'Constraint updated successfully'
-    });
-  } catch (error: any) {
-    console.error('Error updating global constraint:', error);
-    if (error.code === 'P2025') {
-      return createNotFoundError('Constraint not found');
-    }
-    return createErrorResponse('Failed to update constraint', HTTP_STATUS.INTERNAL_SERVER_ERROR);
-  }
-}
+);
 
 // DELETE - Remove global constraint
-export async function DELETE(request: NextRequest) {
-  try {
-    const body = await request.json();
-    const { source } = body;
+export const DELETE = withValidation(
+  { body: deleteConstraintSchema },
+  async (_request: NextRequest, { body: { source } }) => {
+    try {
+      await prisma.globalPreference.delete({
+        where: { source }
+      });
 
-    if (!source) {
-      return createErrorResponse('Source is required', HTTP_STATUS.BAD_REQUEST);
+      return createSuccessResponse({
+        success: true,
+        message: 'Constraint deleted successfully'
+      });
+    } catch (error: any) {
+      console.error('Error deleting global constraint:', error);
+      if (error.code === 'P2025') {
+        return createNotFoundError('Constraint not found');
+      }
+      return createErrorResponse('Failed to delete constraint', HTTP_STATUS.INTERNAL_SERVER_ERROR);
     }
-
-    await prisma.globalPreference.delete({
-      where: { source }
-    });
-
-    return createSuccessResponse({
-      success: true,
-      message: 'Constraint deleted successfully'
-    });
-  } catch (error: any) {
-    console.error('Error deleting global constraint:', error);
-    if (error.code === 'P2025') {
-      return createNotFoundError('Constraint not found');
-    }
-    return createErrorResponse('Failed to delete constraint', HTTP_STATUS.INTERNAL_SERVER_ERROR);
   }
-}
+);

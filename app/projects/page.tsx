@@ -1,7 +1,10 @@
 'use client';
 
 import { useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { Dialog } from '@headlessui/react';
+import { projectFormSchema, type ProjectFormData } from '@/lib/schemas/forms';
 import {
   PlusIcon,
   FolderIcon,
@@ -60,59 +63,40 @@ export default function ProjectsPage() {
     removeSavedSearch,
   } = useUIStore();
 
-  // Local component state (only for form data)
-  const [newProject, setNewProject] = useState<CreateProjectData>({
-    name: '',
-    description: '',
-    gitRepo: '',
-  });
-  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  // Local component state
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedResult, setSelectedResult] = useState<SearchResult | null>(null);
+  
+  // Form hook for create project
+  const createForm = useForm<ProjectFormData>({
+    resolver: zodResolver(projectFormSchema),
+    defaultValues: {
+      name: '',
+      description: '',
+      gitRepo: '',
+    },
+  });
 
   // Derive search state from the mutation
   const searchResults = searchMutation.data?.results || [];
   const isSearching = searchMutation.isPending;
 
-  // Form validation
-  const validateForm = (): boolean => {
-    const errors: Record<string, string> = {};
-    
-    if (!newProject.name.trim()) {
-      errors.name = 'Project name is required';
-    }
-    
-    if (!newProject.gitRepo.trim()) {
-      errors.gitRepo = 'Git repository URL is required';
-    } else if (!isValidGitUrl(newProject.gitRepo)) {
-      errors.gitRepo = 'Please enter a valid Git repository URL';
-    }
-    
-    setFormErrors(errors);
-    return Object.keys(errors).length === 0;
-  };
-
-  const isValidGitUrl = (url: string): boolean => {
-    const gitUrlPattern = /^(https?:\/\/)?([\da-z\.-]+)\.([a-z\.]{2,6})([\/\w \.-]*)*\/?$/;
-    return gitUrlPattern.test(url) && (url.includes('github') || url.includes('gitlab') || url.includes('bitbucket') || url.includes('.git'));
-  };
 
   // Create project handler
-  const handleCreateProject = async () => {
-    if (!validateForm()) return;
-
+  const handleCreateProject = createForm.handleSubmit(async (data) => {
     try {
-      await createProjectMutation.mutateAsync(newProject);
+      await createProjectMutation.mutateAsync(data);
       
       // Reset form and close modal
-      setNewProject({ name: '', description: '', gitRepo: '' });
-      setFormErrors({});
+      createForm.reset();
       closeCreateProjectModal();
     } catch (error) {
       console.error('Failed to create project:', error);
-      setFormErrors({ submit: error instanceof Error ? error.message : 'Failed to create project' });
+      createForm.setError('root', {
+        message: error instanceof Error ? error.message : 'Failed to create project',
+      });
     }
-  };
+  });
 
   // Delete project handler
   const handleDeleteProject = async () => {
@@ -372,18 +356,17 @@ export default function ProjectsPage() {
               </button>
             </div>
 
-            <div className="space-y-4">
+            <form onSubmit={handleCreateProject} className="space-y-4">
               <div>
                 <label className="label">Project Name *</label>
                 <input
                   type="text"
-                  className={`input ${formErrors.name ? 'border-red-300' : ''}`}
-                  value={newProject.name}
-                  onChange={(e) => setNewProject({ ...newProject, name: e.target.value })}
+                  className={`input ${createForm.formState.errors.name ? 'border-red-300' : ''}`}
+                  {...createForm.register('name')}
                   placeholder="My Awesome Project"
                 />
-                {formErrors.name && (
-                  <p className="text-red-600 text-sm mt-1">{formErrors.name}</p>
+                {createForm.formState.errors.name && (
+                  <p className="text-red-600 text-sm mt-1">{createForm.formState.errors.name.message}</p>
                 )}
               </div>
 
@@ -391,53 +374,55 @@ export default function ProjectsPage() {
                 <label className="label">Description</label>
                 <textarea
                   className="input min-h-20"
-                  value={newProject.description}
-                  onChange={(e) => setNewProject({ ...newProject, description: e.target.value })}
+                  {...createForm.register('description')}
                   placeholder="Optional project description..."
                 />
+                {createForm.formState.errors.description && (
+                  <p className="text-red-600 text-sm mt-1">{createForm.formState.errors.description.message}</p>
+                )}
               </div>
 
               <div>
                 <label className="label">Git Repository URL *</label>
                 <input
                   type="url"
-                  className={`input ${formErrors.gitRepo ? 'border-red-300' : ''}`}
-                  value={newProject.gitRepo}
-                  onChange={(e) => setNewProject({ ...newProject, gitRepo: e.target.value })}
+                  className={`input ${createForm.formState.errors.gitRepo ? 'border-red-300' : ''}`}
+                  {...createForm.register('gitRepo')}
                   placeholder="https://github.com/user/repo.git"
                 />
-                {formErrors.gitRepo && (
-                  <p className="text-red-600 text-sm mt-1">{formErrors.gitRepo}</p>
+                {createForm.formState.errors.gitRepo && (
+                  <p className="text-red-600 text-sm mt-1">{createForm.formState.errors.gitRepo.message}</p>
                 )}
               </div>
 
-              {formErrors.submit && (
-                <p className="text-red-600 text-sm">{formErrors.submit}</p>
+              {createForm.formState.errors.root && (
+                <p className="text-red-600 text-sm">{createForm.formState.errors.root.message}</p>
               )}
-            </div>
 
-            <div className="flex justify-end gap-3 mt-6">
-              <button
-                onClick={closeCreateProjectModal}
-                className="btn btn-secondary"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleCreateProject}
-                disabled={createProjectMutation.isPending}
-                className="btn btn-primary"
-              >
-                {createProjectMutation.isPending ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
-                    Creating...
-                  </>
-                ) : (
-                  'Create Project'
-                )}
-              </button>
-            </div>
+              <div className="flex justify-end gap-3 mt-6">
+                <button
+                  type="button"
+                  onClick={closeCreateProjectModal}
+                  className="btn btn-secondary"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={createProjectMutation.isPending || createForm.formState.isSubmitting}
+                  className="btn btn-primary"
+                >
+                  {createProjectMutation.isPending ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                      Creating...
+                    </>
+                  ) : (
+                    'Create Project'
+                  )}
+                </button>
+              </div>
+            </form>
           </Dialog.Panel>
         </div>
       </Dialog>

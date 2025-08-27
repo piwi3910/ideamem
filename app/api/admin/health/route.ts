@@ -1,24 +1,24 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, NextRequest } from 'next/server';
+import { z } from 'zod';
 import { getConfig } from '@/lib/config';
+import { withValidation } from '@/lib/middleware/validation';
 
-export async function POST(request: Request) {
-  let service;
-  
-  try {
-    const body = await request.json();
-    service = body.service;
-  } catch (error) {
-    // If no body is provided or JSON parsing fails, check all services
-    service = null;
-  }
+const healthCheckSchema = z.object({
+  service: z.enum(['qdrant', 'ollama', 'ollama-embedding']).optional(),
+});
+
+export const POST = withValidation(
+  { body: healthCheckSchema.optional() },
+  async (_request: NextRequest, { body }) => {
+    const service = body?.service || null;
   
   const config = await getConfig();
 
   // If no service specified, check all services
   if (!service) {
     const results = {
-      qdrant: { status: 'unknown', url: config.qdrantUrl, error: null, collections: [] },
-      ollama: { status: 'unknown', url: config.ollamaUrl, error: null, models: [] }
+      qdrant: { status: 'unknown', url: config.qdrantUrl, error: null as string | null, collections: [] },
+      ollama: { status: 'unknown', url: config.ollamaUrl, error: null as string | null, models: [] }
     };
 
     // Test Qdrant
@@ -135,4 +135,5 @@ export async function POST(request: Request) {
     const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
     return NextResponse.json({ status: 'error', message: `Connection failed: ${errorMessage}` });
   }
-}
+  }
+);

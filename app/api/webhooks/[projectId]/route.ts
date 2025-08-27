@@ -1,94 +1,147 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, NextRequest } from 'next/server';
+import { z } from 'zod';
 import { getProject, updateProject, startIndexingJob } from '@/lib/projects';
 import { headers } from 'next/headers';
 import { QueueManager, JOB_PRIORITIES } from '@/lib/queue';
+import { withValidation } from '@/lib/middleware/validation';
 
-export async function POST(
-  request: Request,
-  { params }: { params: Promise<{ projectId: string }> }
-) {
-  try {
-    const { projectId } = await params;
-    const body = await request.json();
-    const headersList = await headers();
+const paramsSchema = z.object({
+  projectId: z.string(),
+});
 
-    // Get project
-    const project = await getProject(projectId);
-    if (!project) {
-      return NextResponse.json({ error: 'Project not found' }, { status: 404 });
-    }
+// GitHub webhook payload schema (simplified)
+const githubPushSchema = z.object({
+  deleted: z.boolean().optional(),
+  commits: z.array(z.any()).optional(),
+  head_commit: z.object({
+    id: z.string(),
+    author: z.object({
+      name: z.string(),
+    }).optional(),
+  }).optional(),
+  ref: z.string().optional(),
+  repository: z.any().optional(),
+});
 
-    // Verify webhook source based on headers and payload
-    const isValidWebhook = await verifyWebhook(headersList, body, project);
-    if (!isValidWebhook) {
-      return NextResponse.json({ error: 'Invalid webhook' }, { status: 401 });
-    }
+// GitLab webhook payload schema (simplified)
+const gitlabPushSchema = z.object({
+  commits: z.array(z.any()).optional(),
+  checkout_sha: z.string().optional(),
+  ref: z.string().optional(),
+  repository: z.any().optional(),
+});
 
-    // Extract webhook information
-    const webhookInfo = parseWebhookPayload(body, headersList);
-    if (!webhookInfo.shouldIndex) {
-      return NextResponse.json({
-        message: 'Webhook received but no indexing needed',
-        reason: webhookInfo.reason,
-      });
-    }
+// Bitbucket webhook payload schema (simplified)
+const bitbucketPushSchema = z.object({
+  push: z.object({
+    changes: z.array(z.object({
+      new: z.object({
+        type: z.string().optional(),
+        target: z.object({
+          hash: z.string().optional(),
+          author: z.object({
+            raw: z.string().optional(),
+          }).optional(),
+        }).optional(),
+        name: z.string().optional(),
+      }).optional(),
+    })).optional(),
+  }).optional(),
+  repo: z.any().optional(),
+});
 
-    // Check if already indexing
-    if (project.indexStatus === 'INDEXING') {
-      return NextResponse.json({
-        message: 'Indexing already in progress',
-        projectId: project.id,
-      });
-    }
+// Union of all webhook payload types
+const webhookPayloadSchema = z.union([
+  githubPushSchema,
+  gitlabPushSchema,
+  bitbucketPushSchema,
+  z.record(z.any()), // Fallback for other webhook formats
+]).optional().default({});
 
-    // Update project with webhook information
-    await updateProject(projectId, {
-      lastWebhookAt: new Date(),
-      lastWebhookCommit: webhookInfo.commit,
-      lastWebhookBranch: webhookInfo.branch,
-      lastWebhookAuthor: webhookInfo.author,
-    });
-
-    // Start incremental indexing in background
-    console.log(
-      `Webhook triggered incremental re-indexing for project ${project.name} (${projectId})`
-    );
-    console.log(`Commit: ${webhookInfo.commit} by ${webhookInfo.author} on ${webhookInfo.branch}`);
-
-    // Create indexing job and add to queue
+export const POST = withValidation(
+  { params: paramsSchema, body: webhookPayloadSchema },
+  async (request: NextRequest, { params: { projectId }, body }) => {
     try {
-      const job = await startIndexingJob(projectId, {
-        branch: webhookInfo.branch || 'main',
-        fullReindex: false,
-        triggeredBy: 'WEBHOOK',
+      const headersList = await headers();
+
+      // Get project
+      const project = await getProject(projectId);
+      if (!project) {
+        return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+      }
+
+      // Verify webhook source based on headers and payload
+      const isValidWebhook = await verifyWebhook(headersList, body, project);
+      if (!isValidWebhook) {
+        return NextResponse.json({ error: 'Invalid webhook' }, { status: 401 });
+      }
+
+      // Extract webhook information
+      const webhookInfo = parseWebhookPayload(body, headersList);
+      if (!webhookInfo.shouldIndex) {
+        return NextResponse.json({
+          message: 'Webhook received but no indexing needed',
+          reason: webhookInfo.reason,
+        });
+      }
+
+      // Check if already indexing
+      if (project.indexStatus === 'INDEXING') {
+        return NextResponse.json({
+          message: 'Indexing already in progress',
+          projectId: project.id,
+        });
+      }
+
+      // Update project with webhook information
+      await updateProject(projectId, {
+        lastWebhookAt: new Date(),
+        lastWebhookCommit: webhookInfo.commit,
+        lastWebhookBranch: webhookInfo.branch,
+        lastWebhookAuthor: webhookInfo.author,
       });
 
-      await QueueManager.addIndexingJob({
-        projectId,
-        jobId: job.id,
-        branch: webhookInfo.branch || 'main',
-        fullReindex: false,
-        triggeredBy: 'WEBHOOK',
-      }, JOB_PRIORITIES.NORMAL);
-      
-      console.log(`Added webhook-triggered indexing job for project ${projectId} to queue`);
-    } catch (error) {
-      console.error(`Failed to queue webhook indexing for project ${projectId}:`, error);
-      // Still return success since webhook was processed, just log the queue error
-    }
+      // Start incremental indexing in background
+      console.log(
+        `Webhook triggered incremental re-indexing for project ${project.name} (${projectId})`
+      );
+      console.log(`Commit: ${webhookInfo.commit} by ${webhookInfo.author} on ${webhookInfo.branch}`);
 
-    return NextResponse.json({
-      message: 'Webhook processed successfully, indexing started',
-      projectId: project.id,
-      commit: webhookInfo.commit,
-      branch: webhookInfo.branch,
-      author: webhookInfo.author,
-    });
-  } catch (error) {
-    console.error('Webhook processing error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+      // Create indexing job and add to queue
+      try {
+        const job = await startIndexingJob(projectId, {
+          branch: webhookInfo.branch || 'main',
+          fullReindex: false,
+          triggeredBy: 'WEBHOOK',
+        });
+
+        await QueueManager.addIndexingJob({
+          projectId,
+          jobId: job.id,
+          branch: webhookInfo.branch || 'main',
+          fullReindex: false,
+          triggeredBy: 'WEBHOOK',
+        }, JOB_PRIORITIES.NORMAL);
+        
+        console.log(`Added webhook-triggered indexing job for project ${projectId} to queue`);
+      } catch (error) {
+        console.error(`Failed to queue webhook indexing for project ${projectId}:`, error);
+        // Still return success since webhook was processed, just log the queue error
+      }
+
+      return NextResponse.json({
+        message: 'Webhook processed successfully, indexing started',
+        projectId: project.id,
+        commit: webhookInfo.commit,
+        branch: webhookInfo.branch,
+        author: webhookInfo.author,
+      });
+    } catch (error) {
+      console.error('Webhook processing error:', error);
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    }
   }
-}
+);
 
 async function verifyWebhook(headersList: Headers, payload: any, project: any): Promise<boolean> {
   // GitHub webhook verification

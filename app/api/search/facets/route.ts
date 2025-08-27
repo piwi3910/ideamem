@@ -1,58 +1,70 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import { SearchFacetsEngine, FacetFilters } from '../../../../lib/search-facets';
+import { withValidation } from '@/lib/middleware/validation';
 
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json();
-    const { query, filters = {}, projectId } = body;
+const facetSearchSchema = z.object({
+  query: z.string().optional(),
+  filters: z.record(z.unknown()).optional().default({}),
+  projectId: z.string().optional(),
+});
 
-    console.log('Generating facets for search:', { query, filters, projectId });
+const facetQuerySchema = z.object({
+  query: z.string().optional(),
+  projectId: z.string().optional(),
+});
 
-    // Generate facets based on current query and filters
-    const facetAnalysis = await SearchFacetsEngine.generateFacets(
-      query,
-      filters as FacetFilters,
-      projectId
-    );
+export const POST = withValidation(
+  { body: facetSearchSchema },
+  async (_request: NextRequest, { body: { query, filters, projectId } }) => {
+    try {
+      console.log('Generating facets for search:', { query, filters, projectId });
 
-    console.log('Generated facets:', {
-      facetsCount: facetAnalysis.facets.length,
-      totalDocuments: facetAnalysis.totalDocuments,
-      filteredDocuments: facetAnalysis.filteredDocuments,
-      suggestions: facetAnalysis.suggestions.length,
-    });
+      // Generate facets based on current query and filters
+      const facetAnalysis = await SearchFacetsEngine.generateFacets(
+        query,
+        filters as FacetFilters,
+        projectId
+      );
 
-    return NextResponse.json(facetAnalysis);
-  } catch (error) {
-    console.error('Error generating search facets:', error);
-    return NextResponse.json(
-      {
-        error: 'Failed to generate search facets',
-        details: error instanceof Error ? error.message : 'Unknown error',
-      },
-      { status: 500 }
-    );
+      console.log('Generated facets:', {
+        facetsCount: facetAnalysis.facets.length,
+        totalDocuments: facetAnalysis.totalDocuments,
+        filteredDocuments: facetAnalysis.filteredDocuments,
+        suggestions: facetAnalysis.suggestions.length,
+      });
+
+      return NextResponse.json(facetAnalysis);
+    } catch (error) {
+      console.error('Error generating search facets:', error);
+      return NextResponse.json(
+        {
+          error: 'Failed to generate search facets',
+          details: error instanceof Error ? error.message : 'Unknown error',
+        },
+        { status: 500 }
+      );
+    }
   }
-}
+);
 
-export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url);
-  const query = searchParams.get('query') || undefined;
-  const projectId = searchParams.get('projectId') || undefined;
+export const GET = withValidation(
+  { query: facetQuerySchema },
+  async (_request: NextRequest, { query: { query, projectId } }) => {
+    try {
+      // Generate facets for GET request (no filters applied)
+      const facetAnalysis = await SearchFacetsEngine.generateFacets(query, {}, projectId);
 
-  try {
-    // Generate facets for GET request (no filters applied)
-    const facetAnalysis = await SearchFacetsEngine.generateFacets(query, {}, projectId);
-
-    return NextResponse.json(facetAnalysis);
-  } catch (error) {
-    console.error('Error generating search facets:', error);
-    return NextResponse.json(
-      {
-        error: 'Failed to generate search facets',
-        details: error instanceof Error ? error.message : 'Unknown error',
-      },
-      { status: 500 }
-    );
+      return NextResponse.json(facetAnalysis);
+    } catch (error) {
+      console.error('Error generating search facets:', error);
+      return NextResponse.json(
+        {
+          error: 'Failed to generate search facets',
+          details: error instanceof Error ? error.message : 'Unknown error',
+        },
+        { status: 500 }
+      );
+    }
   }
-}
+);

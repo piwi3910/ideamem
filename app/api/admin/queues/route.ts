@@ -1,8 +1,51 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, NextRequest } from 'next/server';
+import { z } from 'zod';
 import { createBullBoard } from '@bull-board/api';
 import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
 import { ExpressAdapter } from '@bull-board/express';
 import { getQueues, QueueManager } from '@/lib/queue';
+import { withValidation } from '@/lib/middleware/validation';
+
+// Define schemas for queue operations
+const queueActionSchema = z.discriminatedUnion('action', [
+  z.object({
+    action: z.literal('pause'),
+    queueName: z.string().min(1, 'Queue name required'),
+  }),
+  z.object({
+    action: z.literal('resume'),
+    queueName: z.string().min(1, 'Queue name required'),
+  }),
+  z.object({
+    action: z.literal('clean'),
+    queueName: z.string().min(1, 'Queue name required'),
+    data: z.object({
+      grace: z.number().optional(),
+    }).optional(),
+  }),
+  z.object({
+    action: z.literal('addJob'),
+    data: z.object({
+      type: z.literal('indexing'),
+      projectId: z.string().min(1, 'Project ID required'),
+      jobId: z.string().optional(),
+      branch: z.string().optional(),
+      fullReindex: z.boolean().optional(),
+    }),
+  }),
+  z.object({
+    action: z.literal('cancelJob'),
+    queueName: z.string().min(1, 'Queue name required'),
+    data: z.object({
+      jobId: z.string().min(1, 'Job ID required'),
+    }),
+  }),
+]);
+
+const deleteQueueSchema = z.object({
+  queueName: z.string().min(1, 'Queue name required'),
+  confirm: z.literal('DELETE_ALL_JOBS'),
+});
 
 // Initialize Bull-Board once
 let serverAdapter: ExpressAdapter | null = null;
@@ -57,98 +100,75 @@ export async function GET() {
 }
 
 // POST /api/admin/queues - Queue management operations
-export async function POST(request: Request) {
-  try {
-    const { action, queueName, data } = await request.json();
-
-    switch (action) {
-      case 'pause':
-        if (!queueName) {
-          return NextResponse.json({ error: 'Queue name required' }, { status: 400 });
+export const POST = withValidation(
+  { body: queueActionSchema },
+  async (_request: NextRequest, { body }) => {
+    try {
+      switch (body.action) {
+        case 'pause': {
+          const pauseResult = await QueueManager.pauseQueue(body.queueName);
+          return NextResponse.json({ success: pauseResult, action: 'pause', queueName: body.queueName });
         }
-        const pauseResult = await QueueManager.pauseQueue(queueName);
-        return NextResponse.json({ success: pauseResult, action: 'pause', queueName });
 
-      case 'resume':
-        if (!queueName) {
-          return NextResponse.json({ error: 'Queue name required' }, { status: 400 });
+        case 'resume': {
+          const resumeResult = await QueueManager.resumeQueue(body.queueName);
+          return NextResponse.json({ success: resumeResult, action: 'resume', queueName: body.queueName });
         }
-        const resumeResult = await QueueManager.resumeQueue(queueName);
-        return NextResponse.json({ success: resumeResult, action: 'resume', queueName });
 
-      case 'clean':
-        if (!queueName) {
-          return NextResponse.json({ error: 'Queue name required' }, { status: 400 });
+        case 'clean': {
+          const grace = body.data?.grace || 24 * 60 * 60 * 1000; // 24 hours default
+          const cleanResult = await QueueManager.cleanQueue(body.queueName, grace);
+          return NextResponse.json({ success: cleanResult, action: 'clean', queueName: body.queueName, grace });
         }
-        const grace = data?.grace || 24 * 60 * 60 * 1000; // 24 hours default
-        const cleanResult = await QueueManager.cleanQueue(queueName, grace);
-        return NextResponse.json({ success: cleanResult, action: 'clean', queueName, grace });
 
-      case 'addJob':
-        if (!data?.type || !data?.projectId) {
-          return NextResponse.json({ error: 'Job type and projectId required' }, { status: 400 });
-        }
-        
-        if (data.type === 'indexing') {
+        case 'addJob': {
           const job = await QueueManager.addIndexingJob({
-            projectId: data.projectId,
-            jobId: data.jobId || `manual-${Date.now()}`,
-            branch: data.branch || 'main',
-            fullReindex: data.fullReindex || false,
+            projectId: body.data.projectId,
+            jobId: body.data.jobId || `manual-${Date.now()}`,
+            branch: body.data.branch || 'main',
+            fullReindex: body.data.fullReindex || false,
             triggeredBy: 'MANUAL',
           });
           return NextResponse.json({ success: true, jobId: job.id, action: 'addJob' });
         }
-        
-        return NextResponse.json({ error: 'Unknown job type' }, { status: 400 });
 
-      case 'cancelJob':
-        if (!data?.jobId || !queueName) {
-          return NextResponse.json({ error: 'Job ID and queue name required' }, { status: 400 });
+        case 'cancelJob': {
+          const cancelResult = await QueueManager.cancelJob(body.data.jobId, body.queueName);
+          return NextResponse.json({ success: cancelResult, action: 'cancel', jobId: body.data.jobId });
         }
-        const cancelResult = await QueueManager.cancelJob(data.jobId, queueName);
-        return NextResponse.json({ success: cancelResult, action: 'cancel', jobId: data.jobId });
 
-      default:
-        return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
+        default:
+          return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
+      }
+    } catch (error) {
+      console.error('Queue management operation failed:', error);
+      return NextResponse.json({
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      }, { status: 500 });
     }
-  } catch (error) {
-    console.error('Queue management operation failed:', error);
-    return NextResponse.json({
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
-    }, { status: 500 });
   }
-}
+);
 
 // DELETE /api/admin/queues - Emergency queue cleanup
-export async function DELETE(request: Request) {
-  try {
-    const { queueName, confirm } = await request.json();
+export const DELETE = withValidation(
+  { body: deleteQueueSchema },
+  async (_request: NextRequest, { body: { queueName } }) => {
+    try {
+      // Clean all jobs (immediate cleanup)
+      const result = await QueueManager.cleanQueue(queueName, 0);
 
-    if (confirm !== 'DELETE_ALL_JOBS') {
-      return NextResponse.json({ 
-        error: 'Must provide confirmation: "DELETE_ALL_JOBS"' 
-      }, { status: 400 });
+      return NextResponse.json({
+        success: result,
+        message: `All jobs cleaned from queue: ${queueName}`,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error('Emergency queue cleanup failed:', error);
+      return NextResponse.json({
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      }, { status: 500 });
     }
-
-    if (!queueName) {
-      return NextResponse.json({ error: 'Queue name required' }, { status: 400 });
-    }
-
-    // Clean all jobs (immediate cleanup)
-    const result = await QueueManager.cleanQueue(queueName, 0);
-
-    return NextResponse.json({
-      success: result,
-      message: `All jobs cleaned from queue: ${queueName}`,
-      timestamp: new Date().toISOString(),
-    });
-  } catch (error) {
-    console.error('Emergency queue cleanup failed:', error);
-    return NextResponse.json({
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
-    }, { status: 500 });
   }
-}
+);
