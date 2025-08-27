@@ -81,11 +81,12 @@ export async function deleteProject(id: string): Promise<boolean> {
   await initializeDatabase();
 
   try {
-    await prisma.project.delete({
-      where: { id },
-    });
+    // Use ProjectService for comprehensive deletion
+    const { ProjectService } = await import('./services/project-service');
+    await ProjectService.getInstance().deleteProject(id);
     return true;
-  } catch {
+  } catch (error) {
+    console.error('Error deleting project:', error);
     return false;
   }
 }

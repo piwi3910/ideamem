@@ -62,6 +62,54 @@ export {
   type ValidatedRouteHandler 
 } from './validation';
 
+// Rate limiting middleware
+export { 
+  withRateLimit,
+  RateLimiters,
+  RateLimitConfigs,
+  type RateLimitConfig
+} from './rate-limit';
+
+// Security headers middleware
+export { 
+  withSecurityHeaders,
+  SecurityHeaders,
+  defaultSecurityConfig,
+  developmentSecurityConfig,
+  type SecurityHeadersConfig
+} from './security-headers';
+
+// Compression middleware
+export { 
+  withCompression,
+  Compression,
+  defaultCompressionConfig,
+  type CompressionConfig
+} from './compression';
+
+// CORS middleware
+export { 
+  withCors,
+  Cors,
+  defaultCorsConfig,
+  developmentCorsConfig,
+  type CorsConfig
+} from './cors';
+
+// Combined middleware utilities
+export { 
+  withMiddleware,
+  type CombinedConfig,
+  type CombinedHandler
+} from './combined';
+
+// Middleware composition
+export { 
+  composeMiddleware,
+  MiddlewareStacks,
+  type MiddlewareConfig
+} from './compose';
+
 /**
  * Common middleware composition patterns
  * 

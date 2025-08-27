@@ -10,6 +10,7 @@ import {
 } from '@/lib/documentation-repositories';
 import { QueueManager } from '@/lib/queue';
 import { getDocumentationSchedulerStatus } from '@/lib/documentation-scheduler';
+import { MiddlewareStacks } from '@/lib/middleware/compose';
 import { withValidation } from '@/lib/middleware/validation';
 
 // Define schemas for validation
@@ -38,42 +39,36 @@ const querySchema = z.object({
 });
 
 // GET - List all documentation repositories
-export const GET = withValidation(
-  { query: querySchema },
-  async (_request: NextRequest, { query }) => {
-    try {
-      const repositoryId = query.id;
-      
-      if (repositoryId) {
-        // Get specific repository
-        const repository = await getDocumentationRepository(repositoryId);
-        if (!repository) {
-          return NextResponse.json({ error: 'Repository not found' }, { status: 404 });
-        }
-        
-        // Check if repository needs reindexing
-        const needsReindexing = await checkIfRepositoryNeedsReindexing(repository);
-        
-        return NextResponse.json({
-          repository,
-          needsReindexing,
-        });
-      } else {
-        // Get all repositories with scheduler status
-        const repositories = await getAllDocumentationRepositories();
-        const schedulerStatus = await getDocumentationSchedulerStatus();
-        
-        return NextResponse.json({
-          repositories,
-          schedulerStatus,
-        });
+export const GET = MiddlewareStacks.admin(
+  async (request: NextRequest) => {
+    const url = new URL(request.url);
+    const includeJobs = url.searchParams.get('includeJobs') === 'true';
+    const includeStats = url.searchParams.get('includeStats') === 'true';
+    const repositoryId = url.searchParams.get('id');
+    
+    if (repositoryId) {
+      // Get specific repository
+      const repository = await getDocumentationRepository(repositoryId);
+      if (!repository) {
+        return NextResponse.json({ error: 'Repository not found' }, { status: 404 });
       }
-    } catch (error) {
-      console.error('Failed to get documentation repositories:', error);
-      return NextResponse.json(
-        { error: 'Failed to retrieve documentation repositories' },
-        { status: 500 }
-      );
+      
+      // Check if repository needs reindexing
+      const needsReindexing = await checkIfRepositoryNeedsReindexing(repository);
+      
+      return NextResponse.json({
+        repository,
+        needsReindexing,
+      });
+    } else {
+      // Get all repositories with scheduler status
+      const repositories = await getAllDocumentationRepositories();
+      const schedulerStatus = await getDocumentationSchedulerStatus();
+      
+      return NextResponse.json({
+        repositories,
+        schedulerStatus,
+      });
     }
   }
 );
@@ -81,9 +76,15 @@ export const GET = withValidation(
 // POST - Create new documentation repository
 export const POST = withValidation(
   { body: createRepositorySchema },
-  async (_request: NextRequest, { body: data }) => {
-    try {
-      const repository = await createDocumentationRepository(data);
+  async (_request: NextRequest, { body: data }: { body: z.infer<typeof createRepositorySchema> }) => {
+      const repository = await createDocumentationRepository(data).catch((error) => {
+        console.error('Failed to create documentation repository:', error);
+        
+        if (error instanceof Error && error.message.includes('unique constraint')) {
+          throw new Error('Repository with this name or URL already exists');
+        }
+        throw error;
+      });
       
       // If auto-reindexing is enabled, trigger initial indexing
       if (repository.autoReindexEnabled) {
@@ -97,21 +98,6 @@ export const POST = withValidation(
       }
       
       return NextResponse.json({ repository }, { status: 201 });
-    } catch (error) {
-      console.error('Failed to create documentation repository:', error);
-      
-      if (error instanceof Error && error.message.includes('unique constraint')) {
-        return NextResponse.json(
-          { error: 'Repository with this name or URL already exists' },
-          { status: 409 }
-        );
-      }
-      
-      return NextResponse.json(
-        { error: 'Failed to create documentation repository' },
-        { status: 500 }
-      );
-    }
   }
 );
 
@@ -121,34 +107,27 @@ export const PUT = withValidation(
     query: z.object({ id: z.string().min(1, 'Repository ID is required') }),
     body: updateRepositorySchema 
   },
-  async (_request: NextRequest, { query, body: data }) => {
-    try {
-      const repository = await updateDocumentationRepository(query.id, data);
+  async (_request: NextRequest, { query, body: data }: { 
+    query: z.infer<z.ZodObject<{ id: z.ZodString }>>,
+    body: z.infer<typeof updateRepositorySchema>
+  }) => {
+      const repository = await updateDocumentationRepository(query.id, data).catch((error) => {
+        console.error('Failed to update documentation repository:', error);
+        
+        if (error instanceof Error && error.message.includes('unique constraint')) {
+          throw new Error('Repository with this name or URL already exists');
+        }
+        throw error;
+      });
       
       return NextResponse.json({ repository });
-    } catch (error) {
-      console.error('Failed to update documentation repository:', error);
-      
-      if (error instanceof Error && error.message.includes('unique constraint')) {
-        return NextResponse.json(
-          { error: 'Repository with this name or URL already exists' },
-          { status: 409 }
-        );
-      }
-      
-      return NextResponse.json(
-        { error: 'Failed to update documentation repository' },
-        { status: 500 }
-      );
-    }
   }
 );
 
 // DELETE - Delete documentation repository
 export const DELETE = withValidation(
   { query: z.object({ id: z.string().min(1, 'Repository ID is required') }) },
-  async (_request: NextRequest, { query }) => {
-    try {
+  async (_request: NextRequest, { query }: { query: z.infer<z.ZodObject<{ id: z.ZodString }>> }) => {
       await deleteDocumentationRepository(query.id);
       
       // TODO: Also clean up any associated vectors/documents
@@ -159,12 +138,5 @@ export const DELETE = withValidation(
       });
       
       return NextResponse.json({ success: true });
-    } catch (error) {
-      console.error('Failed to delete documentation repository:', error);
-      return NextResponse.json(
-        { error: 'Failed to delete documentation repository' },
-        { status: 500 }
-      );
-    }
   }
 );

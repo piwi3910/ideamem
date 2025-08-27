@@ -15,7 +15,6 @@ import {
   ExclamationCircleIcon,
   ClockIcon,
   XMarkIcon,
-  MagnifyingGlassIcon,
   BookmarkIcon,
   EyeIcon,
   ChartBarIcon,
@@ -32,9 +31,7 @@ import {
   useProjectIndexingJobs,
   type CreateProjectData 
 } from '@/hooks/use-projects';
-import { useSearch, type SearchResult } from '@/hooks/use-search';
 import { useUIStore } from '@/store/ui-store';
-import SearchAutoComplete from '../../components/SearchAutoComplete';
 import ProjectIndexingStatus from '../../components/ProjectIndexingStatus';
 
 export default function ProjectsPage() {
@@ -43,29 +40,19 @@ export default function ProjectsPage() {
   const createProjectMutation = useCreateProject();
   const deleteProjectMutation = useDeleteProject();
   const startIndexingMutation = useStartIndexing();
-  const searchMutation = useSearch();
 
   // Zustand store for UI state
   const {
     createProjectModalOpen,
     deleteProjectModalOpen,
     selectedProjectId,
-    searchPanelOpen,
-    searchHistory,
-    savedSearches,
     openCreateProjectModal,
     closeCreateProjectModal,
     openDeleteProjectModal,
     closeDeleteProjectModal,
-    toggleSearchPanel,
-    addToSearchHistory,
-    saveSearch,
-    removeSavedSearch,
   } = useUIStore();
 
   // Local component state
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedResult, setSelectedResult] = useState<SearchResult | null>(null);
   
   // Form hook for create project
   const createForm = useForm<ProjectFormData>({
@@ -77,9 +64,6 @@ export default function ProjectsPage() {
     },
   });
 
-  // Derive search state from the mutation
-  const searchResults = searchMutation.data?.results || [];
-  const isSearching = searchMutation.isPending;
 
 
   // Create project handler
@@ -119,22 +103,6 @@ export default function ProjectsPage() {
     }
   };
 
-  // Search handler
-  const handleSearch = () => {
-    if (!searchQuery.trim()) return;
-
-    searchMutation.mutate(
-      { query: searchQuery, limit: 10 },
-      {
-        onSuccess: (data) => {
-          addToSearchHistory(searchQuery, data.results?.length || 0);
-        },
-        onError: (error) => {
-          console.error('Search failed:', error);
-        },
-      }
-    );
-  };
 
 
   if (isLoading) {
@@ -182,13 +150,6 @@ export default function ProjectsPage() {
         </div>
         <div className="flex gap-3">
           <button
-            onClick={toggleSearchPanel}
-            className="btn btn-secondary flex items-center gap-2"
-          >
-            <MagnifyingGlassIcon className="h-4 w-4" />
-            Search
-          </button>
-          <button
             onClick={openCreateProjectModal}
             className="btn btn-primary flex items-center gap-2"
           >
@@ -198,68 +159,6 @@ export default function ProjectsPage() {
         </div>
       </div>
 
-      {/* Search Panel */}
-      {searchPanelOpen && (
-        <div className="bg-white rounded-lg shadow-sm border p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold">Search Projects</h3>
-            <button
-              onClick={toggleSearchPanel}
-              className="text-gray-400 hover:text-gray-600"
-            >
-              <XMarkIcon className="h-5 w-5" />
-            </button>
-          </div>
-          
-          <div className="flex gap-3 mb-4">
-            <div className="flex-1">
-              <SearchAutoComplete
-                value={searchQuery}
-                onChange={setSearchQuery}
-                onSubmit={handleSearch}
-                onSuggestionSelect={(suggestion) => setSearchQuery(suggestion.text)}
-                placeholder="Search across all projects..."
-                className="w-full"
-              />
-            </div>
-            <button
-              onClick={handleSearch}
-              disabled={isSearching || !searchQuery.trim()}
-              className="btn btn-primary disabled:opacity-50"
-            >
-              {isSearching ? (
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-              ) : (
-                <MagnifyingGlassIcon className="h-4 w-4" />
-              )}
-            </button>
-          </div>
-
-          {/* Search Results */}
-          {searchResults.length > 0 && (
-            <div className="border-t pt-4">
-              <h4 className="font-medium mb-2">Results ({searchResults.length})</h4>
-              <div className="space-y-2 max-h-64 overflow-y-auto">
-                {searchResults.map((result, index) => (
-                  <div
-                    key={index}
-                    className="p-3 border rounded cursor-pointer hover:bg-gray-50"
-                    onClick={() => setSelectedResult(result)}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="font-medium">{result.source}</div>
-                      <div className="text-xs text-gray-500">{result.projectName}</div>
-                    </div>
-                    <div className="text-sm text-gray-600 mt-1 line-clamp-2">
-                      {result.content.substring(0, 200)}...
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
 
       {/* Projects Grid */}
       {projects.length === 0 ? (
@@ -307,24 +206,23 @@ export default function ProjectsPage() {
 
                 {/* Actions */}
                 <div className="flex items-center justify-between">
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => handleStartIndexing(project.id, false)}
-                      disabled={startIndexingMutation.isPending}
-                      className="btn btn-sm btn-secondary flex items-center gap-1"
-                    >
-                      <PlayIcon className="h-3 w-3" />
-                      Index
-                    </button>
-                    <button
-                      onClick={() => handleStartIndexing(project.id, true)}
-                      disabled={startIndexingMutation.isPending}
-                      className="btn btn-sm btn-secondary flex items-center gap-1"
-                    >
-                      <ArrowPathIcon className="h-3 w-3" />
-                      Reindex
-                    </button>
-                  </div>
+                  <button
+                    onClick={() => handleStartIndexing(project.id, project.indexStatus === 'COMPLETED')}
+                    disabled={startIndexingMutation.isPending}
+                    className="btn btn-sm btn-secondary flex items-center gap-1"
+                  >
+                    {project.indexStatus === 'COMPLETED' ? (
+                      <>
+                        <ArrowPathIcon className="h-3 w-3" />
+                        Reindex
+                      </>
+                    ) : (
+                      <>
+                        <PlayIcon className="h-3 w-3" />
+                        Index
+                      </>
+                    )}
+                  </button>
                   <Link
                     href={`/projects/${project.id}`}
                     className="btn btn-sm btn-primary flex items-center gap-1"

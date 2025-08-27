@@ -3,16 +3,23 @@ import { z } from 'zod';
 import { getProject, startIndexingJob, cancelIndexingJob } from '@/lib/projects';
 import { cancelIndexing } from '@/lib/indexing';
 import { QueueManager, JOB_PRIORITIES } from '@/lib/queue';
+import { composeMiddleware } from '@/lib/middleware/compose';
 import { withValidation } from '@/lib/middleware/validation';
 
 const paramsSchema = z.object({
   id: z.string(),
 });
 
-export const POST = withValidation(
-  { params: paramsSchema },
-  async (_request: NextRequest, { params: { id } }) => {
-    try {
+export const POST = composeMiddleware(
+  {
+    cors: { origin: '*', credentials: true },
+    rateLimit: { requests: 5, window: '1 m' }, // Indexing is expensive
+    security: { contentSecurityPolicy: false },
+    compression: false,
+    validation: { params: paramsSchema },
+    errorHandling: { context: { resource: 'project-indexing' } },
+  },
+  async (request: NextRequest, { params: { id } }: { params: z.infer<typeof paramsSchema> }) => {
     const project = await getProject(id);
 
     if (!project) {
@@ -31,62 +38,42 @@ export const POST = withValidation(
     });
 
     // Add job to BullMQ queue instead of running directly
-    try {
-      console.log(`Attempting to add job to queue for project ${id} with job ID ${job.id}`);
-      
-      const queueResult = await QueueManager.addIndexingJob({
-        projectId: id,
-        jobId: job.id,
-        branch: 'main',
-        fullReindex: true,
-        triggeredBy: 'MANUAL',
-      }, JOB_PRIORITIES.HIGH); // Use HIGH priority for manual reindex
-      
-      console.log(`Queue job addition result:`, {
-        bullmqJobId: queueResult?.id,
-        bullmqJobName: queueResult?.name,
-        bullmqJobData: queueResult?.data
-      });
-      
-      console.log(`Added manual reindex job for project ${id} to queue`);
-      
-      // Verify the job was actually added
-      const queueJob = await QueueManager.getActiveProjectJobs(id);
-      console.log(`Queue job verification for ${id}:`, queueJob);
-      
-      // Also check queue stats after adding
-      const queueStats = await QueueManager.getQueueStats();
-      console.log(`Current queue stats after job addition:`, queueStats.indexing);
-      
-    } catch (queueError) {
-      const errorDetails = queueError instanceof Error ? {
-        message: queueError.message,
-        stack: queueError.stack,
-        name: queueError.name
-      } : { message: String(queueError) };
-      
-      console.error('Failed to add reindex job to queue:', queueError);
-      console.error('Queue error details:', errorDetails);
-      // Cancel the database job if queue fails
-      await cancelIndexingJob(id);
-      throw queueError;
-    }
+    console.log(`Attempting to add job to queue for project ${id} with job ID ${job.id}`);
+    
+    const queueResult = await QueueManager.addIndexingJob({
+      projectId: id,
+      jobId: job.id,
+      branch: 'main',
+      fullReindex: true,
+      triggeredBy: 'MANUAL',
+    }, JOB_PRIORITIES.HIGH); // Use HIGH priority for manual reindex
+    
+    console.log(`Queue job addition result:`, {
+      bullmqJobId: queueResult?.id,
+      bullmqJobName: queueResult?.name,
+      bullmqJobData: queueResult?.data
+    });
+    
+    console.log(`Added manual reindex job for project ${id} to queue`);
+    
+    // Verify the job was actually added
+    const queueJob = await QueueManager.getActiveProjectJobs(id);
+    console.log(`Queue job verification for ${id}:`, queueJob);
+    
+    // Also check queue stats after adding
+    const queueStats = await QueueManager.getQueueStats();
+    console.log(`Current queue stats after job addition:`, queueStats.indexing);
 
       return NextResponse.json({
         message: 'Indexing started',
         projectId: id,
       });
-    } catch (error) {
-      console.error('Error starting indexing:', error);
-      return NextResponse.json({ error: 'Failed to start indexing' }, { status: 500 });
-    }
   }
 );
 
 export const DELETE = withValidation(
   { params: paramsSchema },
-  async (_request: NextRequest, { params: { id } }) => {
-    try {
+  async (_request: NextRequest, { params: { id } }: { params: z.infer<typeof paramsSchema> }) => {
     const success = cancelIndexing(id);
 
     if (success) {
@@ -95,9 +82,5 @@ export const DELETE = withValidation(
     } else {
       return NextResponse.json({ error: 'No active indexing job found' }, { status: 404 });
     }
-  } catch (error) {
-    console.error('Error cancelling indexing:', error);
-    return NextResponse.json({ error: 'Failed to cancel indexing' }, { status: 500 });
-  }
   }
 );

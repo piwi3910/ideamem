@@ -32,20 +32,20 @@ export type ConstraintFormData = z.infer<typeof constraintFormSchema>;
 
 export const projectFormSchema = z.object({
   name: z.string()
+    .trim()
     .min(1, 'Project name is required')
     .max(50, 'Project name must be less than 50 characters')
-    .trim()
     .regex(/^[a-zA-Z0-9-_\s]+$/, 'Project name can only contain letters, numbers, spaces, hyphens, and underscores'),
   description: z.string()
-    .max(500, 'Description must be less than 500 characters')
     .trim()
+    .max(500, 'Description must be less than 500 characters')
     .optional(),
   gitRepo: z.string()
+    .trim()
     .min(1, 'Git repository URL is required')
     .url('Please enter a valid URL')
     .regex(/^https?:\/\/(github\.com|gitlab\.com|bitbucket\.org)\/.*/, 
-      'Please enter a valid GitHub, GitLab, or Bitbucket repository URL')
-    .trim(),
+      'Please enter a valid GitHub, GitLab, or Bitbucket repository URL'),
 });
 
 export type ProjectFormData = z.infer<typeof projectFormSchema>;
@@ -59,23 +59,23 @@ export type ProjectUpdateFormData = z.infer<typeof projectUpdateFormSchema>;
 
 export const docRepositoryFormSchema = z.object({
   name: z.string()
+    .trim()
     .min(1, 'Repository name is required')
-    .max(100, 'Repository name must be less than 100 characters')
-    .trim(),
+    .max(100, 'Repository name must be less than 100 characters'),
   url: z.string()
+    .trim()
     .min(1, 'URL is required')
-    .url('Please enter a valid URL')
-    .trim(),
+    .url('Please enter a valid URL'),
   sourceType: z.enum(['git', 'llmstxt', 'website'])
     .default('git')
     .describe('Please select a source type'),
   branch: z.string()
-    .min(1, 'Branch name is required')
-    .default('main')
-    .trim(),
-  description: z.string()
-    .max(500, 'Description must be less than 500 characters')
     .trim()
+    .min(1, 'Branch name is required')
+    .default('main'),
+  description: z.string()
+    .trim()
+    .max(500, 'Description must be less than 500 characters')
     .optional(),
   reindexInterval: z.coerce.number()
     .min(1, 'Reindex interval must be at least 1 day')
@@ -100,9 +100,9 @@ export const scheduleConfigFormSchema = z.object({
     .max(10080, 'Interval cannot exceed 7 days (10080 minutes)')
     .default(60),
   branch: z.string()
+    .trim()
     .min(1, 'Branch name is required')
-    .default('main')
-    .trim(),
+    .default('main'),
 });
 
 export type ScheduleConfigFormData = z.infer<typeof scheduleConfigFormSchema>;
@@ -127,9 +127,9 @@ export type WebhookConfigFormData = z.infer<typeof webhookConfigFormSchema>;
 
 export const searchFormSchema = z.object({
   query: z.string()
+    .trim()
     .min(1, 'Search query is required')
-    .max(200, 'Search query must be less than 200 characters')
-    .trim(),
+    .max(200, 'Search query must be less than 200 characters'),
   type: z.enum(['code', 'documentation', 'conversation', 'user_preference', 'rule'])
     .optional(),
   language: z.string()
@@ -153,13 +153,13 @@ export type SearchFormData = z.infer<typeof searchFormSchema>;
 
 export const appConfigFormSchema = z.object({
   qdrantUrl: z.string()
+    .trim()
     .min(1, 'Qdrant URL is required')
-    .url('Please enter a valid URL')
-    .trim(),
+    .url('Please enter a valid URL'),
   ollamaUrl: z.string()
+    .trim()
     .min(1, 'Ollama URL is required')
-    .url('Please enter a valid URL')
-    .trim(),
+    .url('Please enter a valid URL'),
   logLevel: z.enum(['error', 'warn', 'info', 'verbose', 'debug', 'silly'])
     .default('info')
     .describe('Please select a log level'),
@@ -225,7 +225,9 @@ export function getDefaultValues<T extends z.ZodTypeAny>(
     for (const key in shape) {
       const fieldSchema = shape[key];
       if (fieldSchema instanceof z.ZodDefault) {
-        defaults[key] = fieldSchema._def.defaultValue();
+        defaults[key] = typeof fieldSchema._def.defaultValue === 'function' 
+          ? fieldSchema._def.defaultValue() 
+          : fieldSchema._def.defaultValue;
       } else if (fieldSchema instanceof z.ZodOptional) {
         defaults[key] = undefined;
       } else if (fieldSchema instanceof z.ZodEnum) {

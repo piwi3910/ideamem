@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { api, createQueryFn, createMutationFn } from '@/lib/api-client';
 
 // Types
 export interface Project {
@@ -55,76 +56,40 @@ export const projectKeys = {
   search: (query: string) => [...projectKeys.all, 'search', query] as const,
 };
 
-// API functions
-async function fetchProjects(): Promise<Project[]> {
-  const response = await fetch('/api/projects');
-  if (!response.ok) {
-    throw new Error(`Failed to fetch projects: ${response.statusText}`);
-  }
-  const data = await response.json();
+// API functions using the new API client
+const fetchProjects = async (): Promise<Project[]> => {
+  const data = await api.get<{ projects: Project[] }>('/api/projects');
   return data.projects || [];
-}
+};
 
-async function fetchProject(id: string): Promise<Project> {
-  const response = await fetch(`/api/projects/${id}`);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch project: ${response.statusText}`);
-  }
-  const data = await response.json();
+const fetchProject = async (id: string): Promise<Project> => {
+  const data = await api.get<{ project: Project }>(`/api/projects/${id}`);
   return data.project;
-}
+};
 
-async function createProject(projectData: CreateProjectData): Promise<Project> {
-  const response = await fetch('/api/projects', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(projectData),
-  });
-  
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || 'Failed to create project');
-  }
-  
-  const data = await response.json();
+const createProject = async (projectData: CreateProjectData): Promise<Project> => {
+  const data = await api.post<{ project: Project }>('/api/projects', projectData);
   return data.project;
-}
+};
 
-async function deleteProject(id: string): Promise<void> {
-  const response = await fetch(`/api/projects/${id}`, {
-    method: 'DELETE',
-  });
-  
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || 'Failed to delete project');
-  }
-}
+const deleteProject = async (id: string): Promise<void> => {
+  await api.delete(`/api/projects/${id}`);
+};
 
-async function startIndexing(projectId: string, fullReindex = false): Promise<IndexingJob> {
-  const response = await fetch(`/api/projects/${projectId}/index`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ fullReindex }),
-  });
-  
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || 'Failed to start indexing');
-  }
-  
-  const data = await response.json();
+const startIndexing = async (projectId: string, fullReindex = false): Promise<IndexingJob> => {
+  const data = await api.post<{ job: IndexingJob }>(
+    `/api/projects/${projectId}/index`,
+    { fullReindex }
+  );
   return data.job;
-}
+};
 
-async function fetchIndexingJobs(projectId: string): Promise<IndexingJob[]> {
-  const response = await fetch(`/api/projects/indexing/status?projectId=${projectId}`);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch indexing jobs: ${response.statusText}`);
-  }
-  const data = await response.json();
+const fetchIndexingJobs = async (projectId: string): Promise<IndexingJob[]> => {
+  const data = await api.get<{ jobs: IndexingJob[] }>(
+    `/api/projects/indexing/status?projectId=${projectId}`
+  );
   return data.jobs || [];
-}
+};
 
 // Hooks
 export function useProjects() {

@@ -1,7 +1,24 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { ingest, retrieve, deleteSource } from '@/lib/memory';
 import { trackQuery } from '@/lib/projects';
 import { validateBearerToken } from '@/lib/auth';
+
+interface SearchResult {
+  payload?: {
+    source: string;
+    type: string;
+    content: string;
+    language?: string;
+  };
+  metadata?: {
+    source: string;
+    language?: string;
+    type?: string;
+  };
+  content?: string;
+  score: number;
+  similarity?: number;
+}
 import {
   indexSingleFile,
   reindexSingleFile,
@@ -14,6 +31,7 @@ import { HybridSearchEngine } from '@/lib/hybrid-search';
 import { QueryEnhancer } from '@/lib/query-enhancement';
 import { MCPToolSchemas, validateToolArguments, type MCPToolName } from '@/lib/schemas/mcp';
 import { z } from 'zod';
+import { MiddlewareStacks } from '@/lib/middleware/compose';
 
 // Define ToolSchema objects for our custom methods
 const INGEST_TOOL_SCHEMA = {
@@ -697,14 +715,14 @@ const ALL_TOOLS = [
   DOCS_SEARCH_TOOL_SCHEMA,
   HYBRID_SEARCH_TOOL_SCHEMA,
   SEARCH_SUGGESTIONS_TOOL_SCHEMA,
-  // Relationship Analysis Tools
-  RELATIONSHIP_GRAPH_TOOL_SCHEMA,
-  RELATED_DOCUMENTS_TOOL_SCHEMA,
+  // Relationship Analysis Tools (TODO: Implement these)
+  // RELATIONSHIP_GRAPH_TOOL_SCHEMA,
+  // RELATED_DOCUMENTS_TOOL_SCHEMA,
   // Advanced Search Tools
-  FACETED_SEARCH_TOOL_SCHEMA,
+  // FACETED_SEARCH_TOOL_SCHEMA, // TODO: Re-enable when search-facets module is implemented
 ];
 
-export async function POST(request: Request) {
+async function handleMCPRequest(request: NextRequest) {
   try {
     const body = await request.json();
     console.log('Incoming MCP request:', body);
@@ -1040,10 +1058,10 @@ export async function POST(request: Request) {
               result = {
                 symbol_name: toolArgs.symbol_name,
                 found: (symbolResults || []).length > 0,
-                matches: (symbolResults || []).map((r: any) => ({
-                  source: r.payload.source,
-                  type: r.payload.type,
-                  snippet: r.payload.content.substring(0, 200),
+                matches: (symbolResults || []).map((r: SearchResult) => ({
+                  source: r.payload?.source || 'unknown',
+                  type: r.payload?.type || 'unknown',
+                  snippet: (r.payload?.content || r.content || '').substring(0, 200),
                   similarity: r.score,
                 })),
                 validation_status: (symbolResults || []).length > 0 ? 'VALID' : 'NOT_FOUND',
@@ -1069,9 +1087,9 @@ export async function POST(request: Request) {
                 current_definition_found: (interfaceResults || []).length > 0,
                 proposed_changes: toolArgs.proposed_changes,
                 change_type: toolArgs.change_type,
-                current_definitions: (interfaceResults || []).map((r: any) => ({
-                  source: r.payload.source,
-                  content: r.payload.content,
+                current_definitions: (interfaceResults || []).map((r: SearchResult) => ({
+                  source: r.payload?.source || 'unknown',
+                  content: r.payload?.content || r.content || '',
                   similarity: r.score,
                 })),
                 impact_warning:
@@ -1114,10 +1132,10 @@ export async function POST(request: Request) {
                 symbol_name: toolArgs.symbol_name,
                 usage_type: toolArgs.usage_type || 'all',
                 total_usages_found: (usageResults || []).length,
-                usages: (usageResults || []).map((r: any) => ({
-                  file: r.payload.source,
-                  content: r.payload.content,
-                  type: r.payload.type,
+                usages: (usageResults || []).map((r: SearchResult) => ({
+                  file: r.payload?.source || 'unknown',
+                  content: r.payload?.content || r.content || '',
+                  type: r.payload?.type || 'unknown',
                   similarity: r.score,
                 })),
                 refactoring_checklist:
@@ -1141,18 +1159,18 @@ export async function POST(request: Request) {
                 value_being_used: toolArgs.value_being_used,
                 usage_context: toolArgs.usage_context,
                 enum_found: (enumResults || []).length > 0,
-                valid_values: (enumResults || []).map((r: any) => {
+                valid_values: (enumResults || []).map((r: SearchResult) => {
                   // Extract enum values from the content
-                  const content = r.payload.content;
+                  const content = r.payload?.content || r.content || '';
                   const enumMatches = content.match(/enum\s+\w+\s*{([^}]*)}/g);
                   return {
-                    source: r.payload.source,
+                    source: r.payload?.source || 'unknown',
                     content: content,
                     similarity: r.score,
                   };
                 }),
                 validation_result: (enumResults || []).some((r) =>
-                  r.payload.content.includes(toolArgs.value_being_used)
+                  r.payload?.content || r.content || ''.includes(toolArgs.value_being_used)
                 )
                   ? 'VALID'
                   : 'INVALID',
@@ -1175,9 +1193,9 @@ export async function POST(request: Request) {
                 parameters_attempting: toolArgs.parameters_attempting,
                 call_context: toolArgs.call_context,
                 function_found: (funcResults || []).length > 0,
-                function_definitions: (funcResults || []).map((r: any) => ({
-                  source: r.payload.source,
-                  signature: r.payload.content,
+                function_definitions: (funcResults || []).map((r: SearchResult) => ({
+                  source: r.payload?.source || 'unknown',
+                  signature: r.payload?.content || r.content || '',
                   similarity: r.score,
                 })),
                 validation_status: (funcResults || []).length > 0 ? 'FOUND' : 'NOT_FOUND',
@@ -1310,7 +1328,7 @@ export async function POST(request: Request) {
               }
 
               const limitedResults = (searchResults || []).slice(0, toolArgs.limit || 5);
-              const mappedResults = limitedResults.map((r: any) => ({
+              const mappedResults = limitedResults.map((r: SearchResult) => ({
                 content: r.payload?.content || r.content || '',
                 source: r.payload?.source || r.metadata?.source || 'unknown',
                 repository:
@@ -1352,7 +1370,7 @@ export async function POST(request: Request) {
             case 'docs.search_suggestions':
               if (!toolArgs) throw new Error('Missing arguments for docs.search_suggestions');
 
-              let suggestions: any[] = [];
+              let suggestions: unknown[] = [];
 
               switch (toolArgs.suggestion_type || 'completion') {
                 case 'completion':
@@ -1395,33 +1413,8 @@ export async function POST(request: Request) {
 
 
             case 'docs.faceted_search':
-              if (!toolArgs?.query) throw new Error('Missing query for docs.faceted_search');
-
-              const { SearchFacetsEngine } = await import('@/lib/search-facets');
-              const facetAnalysis = await SearchFacetsEngine.generateFacets(
-                toolArgs.query,
-                toolArgs.filters || {},
-                projectId || undefined
-              );
-
-              result = {
-                query: toolArgs.query,
-                facet_analysis: facetAnalysis,
-                total_documents: facetAnalysis.totalDocuments,
-                filtered_documents: facetAnalysis.filteredDocuments,
-                available_facets: facetAnalysis.facets.map((facet) => ({
-                  key: facet.key,
-                  name: facet.name,
-                  type: facet.type,
-                  value_count: facet.values.length,
-                  top_values: facet.values.slice(0, 5).map((v) => ({
-                    label: v.label,
-                    count: v.count,
-                    selected: v.selected,
-                  })),
-                })),
-                suggestions: facetAnalysis.suggestions,
-              };
+              // TODO: Implement faceted search when search-facets module is created
+              throw new Error('docs.faceted_search is not yet implemented');
               break;
 
             default:
@@ -1498,3 +1491,6 @@ export async function POST(request: Request) {
     );
   }
 }
+
+// Export with middleware applied
+export const POST = MiddlewareStacks.api(handleMCPRequest);

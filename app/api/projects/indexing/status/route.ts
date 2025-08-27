@@ -1,42 +1,54 @@
 import { NextResponse } from 'next/server';
 import { NextRequest } from 'next/server';
 import { prisma, initializeDatabase } from '@/lib/database';
-import { withValidation } from '@/lib/middleware/validation';
+import { MiddlewareStacks } from '@/lib/middleware/compose';
 
-export const GET = withValidation(
-  {},
-  async (_request: NextRequest) => {
-    try {
-      await initializeDatabase();
+interface IndexingJobStatus {
+  projectId: string;
+  status: string;
+  progress: number | null;
+  currentFile: string | null;
+  totalFiles: number | null;
+  processedFiles: number | null;
+  vectorCount: number;
+  startTime: string | undefined;
+  endTime: string | undefined;
+  error: string | null;
+}
 
-      // Get all active (running) indexing jobs
-      const activeJobs = await prisma.indexingJob.findMany({
-        where: {
-          status: { in: ['PENDING', 'RUNNING'] },
-        },
-      });
+export const GET = MiddlewareStacks.api(
+  async (request: NextRequest) => {
+    await initializeDatabase();
+    
+    // Get projectId from query params
+    const { searchParams } = new URL(request.url);
+    const projectId = searchParams.get('projectId');
 
-      // Convert to the format expected by the frontend
-      const runningJobs: Record<string, any> = {};
-      for (const job of activeJobs) {
-        runningJobs[job.projectId] = {
-          projectId: job.projectId,
-          status: job.status,
-          progress: job.progress,
-          currentFile: job.currentFile,
-          totalFiles: job.totalFiles,
-          processedFiles: job.processedFiles,
-          vectorCount: job.vectorsAdded,
-          startTime: job.startedAt?.toISOString(),
-          endTime: job.completedAt?.toISOString(),
-          error: job.errorMessage,
-        };
-      }
+    // Build query based on whether projectId is provided
+    const where = projectId 
+      ? { projectId, status: { in: ['PENDING', 'RUNNING', 'COMPLETED', 'FAILED', 'CANCELLED'] as const } }
+      : { status: { in: ['PENDING', 'RUNNING'] as const } };
 
-      return NextResponse.json({ jobs: runningJobs });
-    } catch (error) {
-      console.error('Error getting indexing status:', error);
-      return NextResponse.json({ error: 'Failed to get indexing status' }, { status: 500 });
-    }
+    // Get indexing jobs
+    const jobs = await prisma.indexingJob.findMany({
+      where,
+      orderBy: { startedAt: 'desc' },
+      take: projectId ? 10 : undefined, // Limit per-project results
+    });
+
+    // Convert to the format expected by the frontend
+    const formattedJobs = jobs.map(job => ({
+      id: job.id,
+      projectId: job.projectId,
+      status: job.status,
+      progress: job.progress || 0,
+      startedAt: job.startedAt?.toISOString(),
+      completedAt: job.completedAt?.toISOString(),
+      filesProcessed: job.processedFiles,
+      vectorsAdded: job.vectorsAdded,
+      lastError: job.errorMessage,
+    }));
+
+    return NextResponse.json({ jobs: formattedJobs });
   }
 );

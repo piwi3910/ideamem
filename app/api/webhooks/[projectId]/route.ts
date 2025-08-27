@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { getProject, updateProject, startIndexingJob } from '@/lib/projects';
 import { headers } from 'next/headers';
 import { QueueManager, JOB_PRIORITIES } from '@/lib/queue';
-import { withValidation } from '@/lib/middleware/validation';
+import { MiddlewareStacks } from '@/lib/middleware/compose';
 
 const paramsSchema = z.object({
   projectId: z.string(),
@@ -12,7 +12,12 @@ const paramsSchema = z.object({
 // GitHub webhook payload schema (simplified)
 const githubPushSchema = z.object({
   deleted: z.boolean().optional(),
-  commits: z.array(z.any()).optional(),
+  commits: z.array(z.object({
+    id: z.string(),
+    author: z.object({
+      name: z.string(),
+    }).optional(),
+  })).optional(),
   head_commit: z.object({
     id: z.string(),
     author: z.object({
@@ -20,15 +25,26 @@ const githubPushSchema = z.object({
     }).optional(),
   }).optional(),
   ref: z.string().optional(),
-  repository: z.any().optional(),
+  repository: z.object({
+    name: z.string(),
+    url: z.string().optional(),
+  }).optional(),
 });
 
 // GitLab webhook payload schema (simplified)
 const gitlabPushSchema = z.object({
-  commits: z.array(z.any()).optional(),
+  commits: z.array(z.object({
+    id: z.string(),
+    author: z.object({
+      name: z.string(),
+    }).optional(),
+  })).optional(),
   checkout_sha: z.string().optional(),
   ref: z.string().optional(),
-  repository: z.any().optional(),
+  repository: z.object({
+    name: z.string(),
+    url: z.string().optional(),
+  }).optional(),
 });
 
 // Bitbucket webhook payload schema (simplified)
@@ -47,7 +63,10 @@ const bitbucketPushSchema = z.object({
       }).optional(),
     })).optional(),
   }).optional(),
-  repo: z.any().optional(),
+  repo: z.object({
+    name: z.string(),
+    url: z.string().optional(),
+  }).optional(),
 });
 
 // Union of all webhook payload types
@@ -55,14 +74,16 @@ const webhookPayloadSchema = z.union([
   githubPushSchema,
   gitlabPushSchema,
   bitbucketPushSchema,
-  z.record(z.any()), // Fallback for other webhook formats
-]).optional().default({});
+  z.record(z.string(), z.unknown()), // Fallback for other webhook formats
+]);
 
-export const POST = withValidation(
-  { params: paramsSchema, body: webhookPayloadSchema },
-  async (request: NextRequest, { params: { projectId }, body }) => {
-    try {
-      const headersList = await headers();
+export const POST = MiddlewareStacks.webhook(
+  async (request: NextRequest) => {
+    // Parse params and body manually since webhook payloads vary
+    const url = new URL(request.url);
+    const projectId = url.pathname.split('/').slice(-1)[0];
+    const body = await request.json().catch(() => ({}));
+    const headersList = await headers();
 
       // Get project
       const project = await getProject(projectId);
@@ -108,25 +129,27 @@ export const POST = withValidation(
       console.log(`Commit: ${webhookInfo.commit} by ${webhookInfo.author} on ${webhookInfo.branch}`);
 
       // Create indexing job and add to queue
-      try {
-        const job = await startIndexingJob(projectId, {
-          branch: webhookInfo.branch || 'main',
-          fullReindex: false,
-          triggeredBy: 'WEBHOOK',
-        });
+      const job = await startIndexingJob(projectId, {
+        branch: webhookInfo.branch || 'main',
+        fullReindex: false,
+        triggeredBy: 'WEBHOOK',
+      }).catch((error) => {
+        console.error(`Failed to create indexing job for project ${projectId}:`, error);
+        return null;
+      });
 
+      if (job) {
         await QueueManager.addIndexingJob({
           projectId,
           jobId: job.id,
           branch: webhookInfo.branch || 'main',
           fullReindex: false,
           triggeredBy: 'WEBHOOK',
-        }, JOB_PRIORITIES.NORMAL);
+        }, JOB_PRIORITIES.NORMAL).catch((error) => {
+          console.error(`Failed to queue webhook indexing for project ${projectId}:`, error);
+        });
         
         console.log(`Added webhook-triggered indexing job for project ${projectId} to queue`);
-      } catch (error) {
-        console.error(`Failed to queue webhook indexing for project ${projectId}:`, error);
-        // Still return success since webhook was processed, just log the queue error
       }
 
       return NextResponse.json({
@@ -136,14 +159,17 @@ export const POST = withValidation(
         branch: webhookInfo.branch,
         author: webhookInfo.author,
       });
-    } catch (error) {
-      console.error('Webhook processing error:', error);
-      return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
-    }
   }
 );
 
-async function verifyWebhook(headersList: Headers, payload: any, project: any): Promise<boolean> {
+interface ProjectData {
+  id: string;
+  name: string;
+  indexStatus?: string;
+  webhookSecret?: string;
+}
+
+async function verifyWebhook(headersList: Headers, payload: unknown, project: ProjectData): Promise<boolean> {
   // GitHub webhook verification
   const githubSignature = headersList.get('x-hub-signature-256');
   const githubEvent = headersList.get('x-github-event');
@@ -159,15 +185,17 @@ async function verifyWebhook(headersList: Headers, payload: any, project: any): 
   // In production, you'd want to verify HMAC signatures with webhook secrets
 
   // Check if it's a valid git hosting platform webhook
-  const isGitHub = githubEvent === 'push' && githubSignature;
-  const isGitLab = gitlabEvent === 'Push Hook' && gitlabToken;
+  const isGitHub = !!(githubEvent === 'push' && githubSignature);
+  const isGitLab = !!(gitlabEvent === 'Push Hook' && gitlabToken);
   const isBitbucket = bitbucketEvent === 'repo:push';
 
   // Basic payload structure verification
-  const hasValidPayload =
-    payload &&
-    (payload.repository || // GitHub/GitLab
-      payload.repo); // Bitbucket
+  const payloadObj = payload as Record<string, unknown>;
+  const hasValidPayload = !!(
+    payloadObj &&
+    (payloadObj.repository || // GitHub/GitLab
+      payloadObj.repo) // Bitbucket
+  );
 
   return (isGitHub || isGitLab || isBitbucket) && hasValidPayload;
 }
@@ -182,7 +210,7 @@ interface WebhookInfo {
   platform?: string;
 }
 
-function parseWebhookPayload(payload: any, headersList: Headers): WebhookInfo {
+function parseWebhookPayload(payload: unknown, headersList: Headers): WebhookInfo {
   const githubEvent = headersList.get('x-github-event');
   const gitlabEvent = headersList.get('x-gitlab-event');
   const bitbucketEvent = headersList.get('x-event-key');
@@ -195,11 +223,25 @@ function parseWebhookPayload(payload: any, headersList: Headers): WebhookInfo {
   let branch = '';
   let author = '';
 
+  // We'll validate against specific schemas based on the event type
+
   if (githubEvent === 'push') {
     platform = 'GitHub';
+    
+    // Validate GitHub payload
+    const result = githubPushSchema.safeParse(payload);
+    if (!result.success) {
+      return {
+        shouldIndex: false,
+        reason: 'Invalid GitHub payload',
+        platform,
+      };
+    }
+    
+    const payloadData = result.data;
 
     // Don't index if it's a branch deletion
-    if (payload.deleted) {
+    if (payloadData.deleted) {
       return {
         shouldIndex: false,
         reason: 'Branch deleted',
@@ -208,7 +250,7 @@ function parseWebhookPayload(payload: any, headersList: Headers): WebhookInfo {
     }
 
     // Don't index if no commits
-    if (!payload.commits || payload.commits.length === 0) {
+    if (!payloadData.commits || payloadData.commits.length === 0) {
       return {
         shouldIndex: false,
         reason: 'No commits in push',
@@ -217,15 +259,27 @@ function parseWebhookPayload(payload: any, headersList: Headers): WebhookInfo {
     }
 
     shouldIndex = true;
-    fullCommit = payload.head_commit?.id || 'unknown';
+    fullCommit = payloadData.head_commit?.id || 'unknown';
     commit = fullCommit.substring(0, 7);
-    branch = payload.ref?.replace('refs/heads/', '') || 'unknown';
-    author = payload.head_commit?.author?.name || 'unknown';
+    branch = payloadData.ref?.replace('refs/heads/', '') || 'unknown';
+    author = payloadData.head_commit?.author?.name || 'unknown';
   } else if (gitlabEvent === 'Push Hook') {
     platform = 'GitLab';
+    
+    // Validate GitLab payload
+    const result = gitlabPushSchema.safeParse(payload);
+    if (!result.success) {
+      return {
+        shouldIndex: false,
+        reason: 'Invalid GitLab payload',
+        platform,
+      };
+    }
+    
+    const payloadData = result.data;
 
     // Don't index if no commits
-    if (!payload.commits || payload.commits.length === 0) {
+    if (!payloadData.commits || payloadData.commits.length === 0) {
       return {
         shouldIndex: false,
         reason: 'No commits in push',
@@ -234,15 +288,27 @@ function parseWebhookPayload(payload: any, headersList: Headers): WebhookInfo {
     }
 
     shouldIndex = true;
-    fullCommit = payload.checkout_sha || 'unknown';
+    fullCommit = payloadData.checkout_sha || payloadData.commits?.[0]?.id || 'unknown';
     commit = fullCommit.substring(0, 7);
-    branch = payload.ref?.replace('refs/heads/', '') || 'unknown';
-    author = payload.commits?.[0]?.author?.name || 'unknown';
+    branch = payloadData.ref?.replace('refs/heads/', '') || 'unknown';
+    author = payloadData.commits?.[0]?.author?.name || 'unknown';
   } else if (bitbucketEvent === 'repo:push') {
     platform = 'Bitbucket';
+    
+    // Validate Bitbucket payload
+    const result = bitbucketPushSchema.safeParse(payload);
+    if (!result.success) {
+      return {
+        shouldIndex: false,
+        reason: 'Invalid Bitbucket payload',
+        platform,
+      };
+    }
+    
+    const payloadData = result.data;
 
     // Don't index if no changes
-    if (!payload.push?.changes || payload.push.changes.length === 0) {
+    if (!payloadData.push?.changes || payloadData.push.changes.length === 0) {
       return {
         shouldIndex: false,
         reason: 'No changes in push',
@@ -250,8 +316,8 @@ function parseWebhookPayload(payload: any, headersList: Headers): WebhookInfo {
       };
     }
 
-    const change = payload.push.changes[0];
-    if (!change.new || change.new.type === 'tag') {
+    const change = payloadData.push.changes[0];
+    if (!change?.new || change.new?.type === 'tag') {
       return {
         shouldIndex: false,
         reason: 'Tag push or branch deletion',

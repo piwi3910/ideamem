@@ -4,6 +4,7 @@ import { createBullBoard } from '@bull-board/api';
 import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
 import { ExpressAdapter } from '@bull-board/express';
 import { getQueues, QueueManager } from '@/lib/queue';
+import { MiddlewareStacks } from '@/lib/middleware/compose';
 import { withValidation } from '@/lib/middleware/validation';
 
 // Define schemas for queue operations
@@ -76,34 +77,25 @@ function initializeBullBoard() {
 }
 
 // GET /api/admin/queues - Get queue statistics
-export async function GET() {
-  try {
-    // Initialize Bull-Board if not already done
-    initializeBullBoard();
+export const GET = MiddlewareStacks.admin(async (request: NextRequest) => {
+  // Initialize Bull-Board if not already done
+  initializeBullBoard();
 
-    // Get comprehensive queue statistics
-    const stats = await QueueManager.getQueueStats();
+  // Get comprehensive queue statistics
+  const stats = await QueueManager.getQueueStats();
 
-    return NextResponse.json({
-      success: true,
-      queueStats: stats,
-      dashboardUrl: '/api/admin/queues/ui',
-      timestamp: new Date().toISOString(),
-    });
-  } catch (error) {
-    console.error('Error getting queue stats:', error);
-    return NextResponse.json({
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
-    }, { status: 500 });
-  }
-}
+  return NextResponse.json({
+    success: true,
+    queueStats: stats,
+    dashboardUrl: '/api/admin/queues/ui',
+    timestamp: new Date().toISOString(),
+  });
+});
 
 // POST /api/admin/queues - Queue management operations
 export const POST = withValidation(
   { body: queueActionSchema },
-  async (_request: NextRequest, { body }) => {
-    try {
+  async (_request: NextRequest, { body }: { body: z.infer<typeof queueActionSchema> }) => {
       switch (body.action) {
         case 'pause': {
           const pauseResult = await QueueManager.pauseQueue(body.queueName);
@@ -140,21 +132,13 @@ export const POST = withValidation(
         default:
           return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
       }
-    } catch (error) {
-      console.error('Queue management operation failed:', error);
-      return NextResponse.json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      }, { status: 500 });
-    }
   }
 );
 
 // DELETE /api/admin/queues - Emergency queue cleanup
 export const DELETE = withValidation(
   { body: deleteQueueSchema },
-  async (_request: NextRequest, { body: { queueName } }) => {
-    try {
+  async (_request: NextRequest, { body: { queueName } }: { body: z.infer<typeof deleteQueueSchema> }) => {
       // Clean all jobs (immediate cleanup)
       const result = await QueueManager.cleanQueue(queueName, 0);
 
@@ -163,12 +147,5 @@ export const DELETE = withValidation(
         message: `All jobs cleaned from queue: ${queueName}`,
         timestamp: new Date().toISOString(),
       });
-    } catch (error) {
-      console.error('Emergency queue cleanup failed:', error);
-      return NextResponse.json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      }, { status: 500 });
-    }
   }
 );

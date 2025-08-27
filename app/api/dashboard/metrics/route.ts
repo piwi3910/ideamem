@@ -1,9 +1,9 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, NextRequest } from 'next/server';
 import { prisma } from '@/lib/database';
 import { getQdrantClient } from '@/lib/memory';
+import { MiddlewareStacks } from '@/lib/middleware/compose';
 
-export async function GET() {
-  try {
+export const GET = MiddlewareStacks.api(async (request: NextRequest) => {
     // Get database metrics
     const [
       projectsCount,
@@ -241,12 +241,4 @@ export async function GET() {
       recentActivity: allRecentActivity,
       timestamp: new Date().toISOString()
     });
-
-  } catch (error) {
-    console.error('Error fetching dashboard metrics:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch dashboard metrics' },
-      { status: 500 }
-    );
-  }
-}
+});

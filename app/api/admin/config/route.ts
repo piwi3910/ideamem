@@ -2,7 +2,7 @@ import { NextResponse, NextRequest } from 'next/server';
 import { z } from 'zod';
 import { getConfig, saveConfig } from '@/lib/config';
 import { updateDocumentationScheduling } from '@/lib/documentation-scheduler';
-import { withValidation } from '@/lib/middleware/validation';
+import { MiddlewareStacks } from '@/lib/middleware/compose';
 
 // Define the config schema
 const configSchema = z.object({
@@ -13,39 +13,38 @@ const configSchema = z.object({
   docReindexInterval: z.number().min(1, 'Reindex interval must be at least 1 day'),
 });
 
-export async function GET() {
-  try {
-    const config = await getConfig();
-    return NextResponse.json(config);
-  } catch (_error) {
-    return NextResponse.json({ message: 'Failed to read configuration.' }, { status: 500 });
-  }
-}
+export const GET = MiddlewareStacks.admin(async (request: NextRequest) => {
+  const config = await getConfig();
+  return NextResponse.json(config);
+});
 
-export const POST = withValidation(
-  { body: configSchema },
-  async (_request: NextRequest, { body: newConfig }) => {
+export const POST = MiddlewareStacks.admin(async (request: NextRequest) => {
+  const body = await request.json();
+  const validation = configSchema.safeParse(body);
+  if (!validation.success) {
+    return NextResponse.json(
+      { error: 'Invalid configuration', details: validation.error.flatten() },
+      { status: 400 }
+    );
+  }
+  const newConfig = validation.data;
+  
+  // Get current config to check for changes
+  const currentConfig = await getConfig();
+  
+  await saveConfig(newConfig);
+  
+  // Update documentation scheduling if settings changed
+  if (currentConfig.docReindexEnabled !== newConfig.docReindexEnabled || 
+      currentConfig.docReindexInterval !== newConfig.docReindexInterval) {
     try {
-      // Get current config to check for changes
-      const currentConfig = await getConfig();
-      
-      await saveConfig(newConfig);
-      
-      // Update documentation scheduling if settings changed
-      if (currentConfig.docReindexEnabled !== newConfig.docReindexEnabled || 
-          currentConfig.docReindexInterval !== newConfig.docReindexInterval) {
-        try {
-          await updateDocumentationScheduling(newConfig.docReindexEnabled, newConfig.docReindexInterval);
-          console.log('Documentation scheduling updated based on new config');
-        } catch (schedulerError) {
-          console.error('Failed to update documentation scheduler:', schedulerError);
-          // Don't fail the config save if scheduler update fails
-        }
-      }
-      
-      return NextResponse.json({ message: 'Configuration saved successfully.' });
-    } catch (_error) {
-      return NextResponse.json({ message: 'Failed to save configuration.' }, { status: 500 });
+      await updateDocumentationScheduling(newConfig.docReindexEnabled, newConfig.docReindexInterval);
+      console.log('Documentation scheduling updated based on new config');
+    } catch (schedulerError) {
+      console.error('Failed to update documentation scheduler:', schedulerError);
+      // Don't fail the config save if scheduler update fails
     }
   }
-);
+  
+  return NextResponse.json({ message: 'Configuration saved successfully.' });
+});

@@ -274,6 +274,75 @@ export const CrudHandlers = {
     customErrorMessages: createPreferenceErrorMessages('project'),
   }),
 
+  /**
+   * Global constraints/rules CRUD handler
+   * Constraints are stored as preferences with category 'rule'
+   */
+  globalConstraints: new CrudHandlerFactory({
+    scope: 'global',
+    resourceName: 'global constraint',
+    model: prisma.globalPreference,
+    whereClause: () => ({ category: 'rule' }),
+    createData: (input: CrudItemInput) => ({
+      source: input.source,
+      content: input.content,
+      category: 'rule', // Force category to 'rule' for constraints
+    }),
+    updateData: (input: CrudItemUpdate) => ({
+      ...(input.content && { content: input.content }),
+      category: 'rule', // Always keep as rule
+    }),
+    transformItem: (item: any) => ({
+      id: item.id,
+      payload: {
+        source: item.source,
+        content: item.content,
+        category: 'rule',
+        type: 'rule',
+        language: 'markdown',
+        scope: 'global',
+        project_id: 'global',
+      },
+    }),
+    customErrorMessages: createPreferenceErrorMessages('global'),
+  }),
+
+  /**
+   * Project constraints/rules CRUD handler
+   * Constraints are stored as preferences with category 'rule'
+   */
+  projectConstraints: new CrudHandlerFactory({
+    scope: 'project',
+    resourceName: 'project constraint',
+    model: prisma.projectPreference,
+    whereClause: (projectId?: string) => ({ 
+      projectId,
+      category: 'rule' 
+    }),
+    createData: (input: CrudItemInput, projectId?: string) => ({
+      projectId: projectId!,
+      source: input.source,
+      content: input.content,
+      category: 'rule', // Force category to 'rule' for constraints
+    }),
+    updateData: (input: CrudItemUpdate) => ({
+      ...(input.content && { content: input.content }),
+      category: 'rule', // Always keep as rule
+    }),
+    transformItem: (item: any) => ({
+      id: item.id,
+      payload: {
+        source: item.source,
+        content: item.content,
+        category: 'rule',
+        type: 'rule',
+        language: 'markdown',
+        scope: 'project',
+        project_id: item.projectId,
+      },
+    }),
+    customErrorMessages: createPreferenceErrorMessages('project'),
+  }),
 };
 
 /**
@@ -334,4 +403,6 @@ export function createCrudRoutes<T extends CrudItem>(handler: CrudHandlerFactory
 export const PreConfiguredRoutes = {
   globalPreferences: createCrudRoutes(CrudHandlers.globalPreferences),
   projectPreferences: createCrudRoutes(CrudHandlers.projectPreferences),
+  globalConstraints: createCrudRoutes(CrudHandlers.globalConstraints),
+  projectConstraints: createCrudRoutes(CrudHandlers.projectConstraints),
 };

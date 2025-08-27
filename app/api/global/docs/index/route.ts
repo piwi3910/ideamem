@@ -1,4 +1,5 @@
-import { NextResponse } from 'next/server';
+import { MiddlewareStacks } from '@/lib/middleware/compose';
+import { NextResponse, NextRequest } from 'next/server';
 import { readdir, readFile, rm, stat } from 'fs/promises';
 import { existsSync } from 'fs';
 import * as path from 'path';
@@ -344,29 +345,28 @@ async function indexGitRepository(
 }
 
 // POST - Index a documentation repository using queue system
-export async function POST(request: Request) {
-  try {
-    const body = await request.json();
-    const { repositoryId } = body;
+export const POST = MiddlewareStacks.api(async (request: NextRequest) => {
+  const body = await request.json();
+  const { repositoryId } = body;
 
-    if (!repositoryId) {
-      return NextResponse.json(
-        { success: false, error: 'Repository ID is required' },
-        { status: 400 }
-      );
-    }
+  if (!repositoryId) {
+    return NextResponse.json(
+      { success: false, error: 'Repository ID is required' },
+      { status: 400 }
+    );
+  }
 
-    const repo = await getRepository(repositoryId);
+  const repo = await getRepository(repositoryId);
 
-    if (!repo) {
-      return NextResponse.json({ success: false, error: 'Repository not found' }, { status: 404 });
-    }
+  if (!repo) {
+    return NextResponse.json({ success: false, error: 'Repository not found' }, { status: 404 });
+  }
 
-    // Update status to indexing
-    await updateRepositoryStatus(repositoryId, 'indexing');
+  // Update status to indexing
+  await updateRepositoryStatus(repositoryId, 'indexing');
 
-    // Create database record for tracking this indexing job
-    let docIndexingJob;
+  // Create database record for tracking this indexing job
+  let docIndexingJob;
     try {
       docIndexingJob = await prisma.documentationIndexingJob.create({
         data: {
@@ -426,14 +426,7 @@ export async function POST(request: Request) {
       success: true,
       message: `Started indexing ${repo.name} via queue system`,
     });
-  } catch (error) {
-    console.error('Error starting repository indexing:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to start indexing' },
-      { status: 500 }
-    );
-  }
-}
+});
 
 // Index llms.txt file
 async function indexLLMsTxtFile(
@@ -640,7 +633,7 @@ async function indexWebsite(
               await ingest({
                 content: chunk.content,
                 source: `${repo.name}/${sourceName}`,
-                type: classification.contentType as any,
+                type: 'documentation' as const,
                 language: classification.language || 'markdown',
                 project_id: 'global',
                 scope: 'global',
@@ -671,7 +664,7 @@ async function indexWebsite(
               await ingest({
                 content: chunk,
                 source: `${repo.name}/${sourceName}`,
-                type: classification.contentType as any,
+                type: 'documentation' as const,
                 language: classification.language || 'markdown',
                 project_id: 'global',
                 scope: 'global',

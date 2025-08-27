@@ -13,7 +13,10 @@ interface ProjectIndexingStatusProps {
 
 export default function ProjectIndexingStatus({ project }: ProjectIndexingStatusProps) {
   const { data: indexingJobs = [] } = useProjectIndexingJobs(project.id);
-  const currentJob = indexingJobs.find((job: any) => job.status === 'RUNNING');
+  
+  // Ensure indexingJobs is an array
+  const jobs = Array.isArray(indexingJobs) ? indexingJobs : [];
+  const currentJob = jobs.find((job: any) => job.status === 'RUNNING');
   
   if (currentJob) {
     return (
