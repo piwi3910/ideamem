@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { NextRequest } from 'next/server';
 import { prisma, initializeDatabase } from '@/lib/database';
 import { MiddlewareStacks } from '@/lib/middleware/compose';
+import { JobStatus } from '@prisma/client';
 
 interface IndexingJobStatus {
   projectId: string;
@@ -26,8 +27,8 @@ export const GET = MiddlewareStacks.api(
 
     // Build query based on whether projectId is provided
     const where = projectId 
-      ? { projectId, status: { in: ['PENDING', 'RUNNING', 'COMPLETED', 'FAILED', 'CANCELLED'] as const } }
-      : { status: { in: ['PENDING', 'RUNNING'] as const } };
+      ? { projectId, status: { in: ['PENDING', 'RUNNING', 'COMPLETED', 'FAILED', 'CANCELLED'] as JobStatus[] } }
+      : { status: { in: ['PENDING', 'RUNNING'] as JobStatus[] } };
 
     // Get indexing jobs
     const jobs = await prisma.indexingJob.findMany({

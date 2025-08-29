@@ -7,6 +7,7 @@ export class TypeScriptParser extends BaseParser {
   parse(content: string, source?: string): ParseResult {
     try {
       // Use TypeScript compiler API for proper AST parsing
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const ts = require('typescript');
       
       // Determine the appropriate script kind based on file extension
@@ -114,6 +115,7 @@ export class TypeScriptParser extends BaseParser {
   }
 
   private isChunkableNode(node: any, sourceFile: any): boolean {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const ts = require('typescript');
     
     // Only chunk top-level declarations and meaningful constructs
@@ -131,6 +133,7 @@ export class TypeScriptParser extends BaseParser {
   }
 
   private getNodeName(node: any): string {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const ts = require('typescript');
     
     if (node.name && node.name.text) {
@@ -153,6 +156,7 @@ export class TypeScriptParser extends BaseParser {
   }
 
   private getNodeType(node: any): SemanticChunk['type'] {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const ts = require('typescript');
     
     if (ts.isFunctionDeclaration(node)) return 'function';
@@ -168,15 +172,19 @@ export class TypeScriptParser extends BaseParser {
   }
 
   private isAsyncNode(node: any): boolean {
-    return !!(node.modifiers?.some((mod: any) => mod.kind === require('typescript').SyntaxKind.AsyncKeyword));
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const ts = require('typescript');
+    return !!(node.modifiers?.some((mod: any) => mod.kind === ts.SyntaxKind.AsyncKeyword));
   }
 
   private isExported(node: any): boolean {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const ts = require('typescript');
     return !!(node.modifiers?.some((mod: any) => mod.kind === ts.SyntaxKind.ExportKeyword));
   }
 
   private getParameters(node: any): string[] {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const ts = require('typescript');
     
     if (ts.isFunctionDeclaration(node) || ts.isMethodDeclaration(node)) {
@@ -187,6 +195,7 @@ export class TypeScriptParser extends BaseParser {
   }
 
   private extractImportsFromNode(sourceFile: any): string[] {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const ts = require('typescript');
     const imports: string[] = [];
 
@@ -210,6 +219,7 @@ export class TypeScriptParser extends BaseParser {
   }
 
   private extractExportsFromNode(sourceFile: any): string[] {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const ts = require('typescript');
     const exports: string[] = [];
 

@@ -275,6 +275,8 @@ export function withRateLimitAndError(
   }
 
   // Apply both rate limiting and error handling
-  const withError = require('./error-handler').withErrorHandling;
-  return withRateLimit(rateLimitConfig, withError(handler, errorContext));
+  // Import error handler at the top of the file for better compatibility
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { withErrorHandling } = require('./error-handler');
+  return withRateLimit(rateLimitConfig, withErrorHandling(handler, errorContext));
 }

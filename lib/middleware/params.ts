@@ -100,7 +100,7 @@ export const ParamMiddleware = {
   /**
    * Extract optional UUID parameter
    */
-  withOptionalUuid: <T extends any>(
+  withOptionalUuid: <T>(
     handler: ParamHandler<typeof ParamSchemas.optionalUuid>
   ) => withParams(ParamSchemas.optionalUuid, handler),
 
@@ -168,7 +168,7 @@ export const ParamPatterns = {
   /**
    * Extract UUID param and pass to handler
    */
-  uuid: <T extends any>(handler: (request: NextRequest, id: string, context?: T) => Promise<NextResponse>) => 
+  uuid: <T>(handler: (request: NextRequest, id: string, context?: T) => Promise<NextResponse>) => 
     withParams(ParamSchemas.uuid, async (request, params, context) => {
       return handler(request, params.id, context);
     }),
@@ -176,7 +176,7 @@ export const ParamPatterns = {
   /**
    * Extract project ID param and pass to handler
    */
-  projectId: <T extends any>(handler: (request: NextRequest, projectId: string, context?: T) => Promise<NextResponse>) => 
+  projectId: <T>(handler: (request: NextRequest, projectId: string, context?: T) => Promise<NextResponse>) => 
     withParams(ParamSchemas.projectId, async (request, params, context) => {
       return handler(request, params.id, context);
     }),

@@ -6,13 +6,15 @@ export class CSSParser extends BaseParser {
 
   parse(content: string, source?: string): ParseResult {
     try {
+      // Dynamic import for PostCSS
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const postcss = require('postcss');
       
       // Parse CSS with PostCSS
       const root = postcss.parse(content, { from: source });
       
       const chunks: SemanticChunk[] = [];
-      let lineCounter = 1;
+      const lineCounter = 1;
       
       // Walk through all nodes in the CSS AST
       root.walkRules((rule: any) => {

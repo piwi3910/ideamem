@@ -45,7 +45,7 @@ export default function ConstraintsPage() {
   
   // React Hook Form for add form
   const addForm = useForm<ConstraintFormData>({
-    resolver: zodResolver(constraintFormSchema),
+    resolver: zodResolver(constraintFormSchema) as any,
     defaultValues: {
       source: '',
       content: '',
@@ -56,7 +56,7 @@ export default function ConstraintsPage() {
 
   // React Hook Form for edit form
   const editForm = useForm<ConstraintFormData>({
-    resolver: zodResolver(constraintFormSchema),
+    resolver: zodResolver(constraintFormSchema) as any,
   });
   
   const error = fetchError?.message || createConstraintMutation.error?.message || 
