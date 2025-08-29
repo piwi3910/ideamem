@@ -32,13 +32,84 @@ model Config {
   @@map("config")
 }
 
+// Users - Core authentication entity
+model User {
+  id              String    @id @default(uuid())
+  email           String    @unique
+  name            String
+  passwordHash    String    // Store hashed password, never plain text
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  // Relations
+  roles           UserRole[]
+  tokens          Token[]
+  
+  @@map("users")
+}
+
+// Roles - Define permissions and access levels
+model Role {
+  id              String    @id @default(uuid())
+  name            String    @unique
+  description     String?
+  permissions     String    // JSON field for flexible permission definition
+  isSystem        Boolean   @default(false) // System roles cannot be deleted
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  // Relations
+  users           UserRole[]
+  tokens          Token[]
+  
+  @@map("roles")
+}
+
+// User-Role relationship (many-to-many)
+model UserRole {
+  id              String    @id @default(uuid())
+  userId          String
+  roleId          String
+  assignedAt      DateTime  @default(now())
+  assignedBy      String?   // ID of user who assigned this role
+  
+  // Relations
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role            Role      @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, roleId])
+  @@map("user_roles")
+}
+
+// Authentication tokens
+model Token {
+  id              String    @id @default(uuid())
+  token           String    @unique
+  name            String?   // Optional friendly name for the token
+  userId          String
+  roleId          String    // Each token is associated with a specific role
+  expiresAt       DateTime? // Optional expiration
+  lastUsedAt      DateTime?
+  createdAt       DateTime  @default(now())
+  revokedAt       DateTime? // Soft delete for audit trail
+  
+  // Relations
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role            Role      @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  
+  @@index([token])
+  @@index([userId])
+  @@map("tokens")
+}
+
 // Projects (replaces data/projects.json)
 model Project {
   id                           String    @id @default(uuid())
   name                         String    @unique
   description                  String?
   gitRepo                      String
-  token                        String    @unique
+  token                        String    @unique // Legacy token - will be deprecated
   createdAt                    DateTime  @default(now())
   updatedAt                    DateTime  @updatedAt
   

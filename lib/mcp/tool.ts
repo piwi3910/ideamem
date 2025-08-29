@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { AuthContext } from '@/lib/auth';
 
 /**
  * Base interface for MCP tools
@@ -43,6 +44,11 @@ export interface ToolContext {
    * The bearer token if provided
    */
   token?: string;
+  
+  /**
+   * Full authentication context (includes user info for user tokens)
+   */
+  authContext?: AuthContext;
   
   /**
    * The original request object
